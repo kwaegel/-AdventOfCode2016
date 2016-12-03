@@ -3,13 +3,14 @@ use std::io::prelude::*;
 use std::fs::File;
 
 use std::ops::Add;
+use std::collections::HashSet;
 
 extern crate regex;
 use regex::Regex;
 
 // North = +y
 // East = +X
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 struct Vec2i {
     x: i32,
     y: i32,
@@ -27,7 +28,7 @@ impl Vec2i {
 
     // Distance from origin
     fn manhattan_magnitude(&self) -> i32 {
-        &self.x + &self.y
+        &self.x.abs() + &self.y.abs()
     }
 }
 impl Add for Vec2i {
@@ -46,7 +47,8 @@ struct Pose {
 #[derive(Debug, Copy, Clone)]
 enum Turn {
     Right,
-    Left
+    Left,
+    Straight
 }
 
 // Given a input direction vector (x,y), rotate θ° CCW using the rotation matrix:
@@ -61,6 +63,7 @@ fn rotated(input: Vec2i, turn: Turn) -> Vec2i {
     match turn {
         Turn::Left => Vec2i::new(-input.y, input.x),
         Turn::Right => Vec2i::new(input.y, -input.x),
+        Turn::Straight => input,
     }
 }
 
@@ -79,37 +82,70 @@ fn as_direction(input: Option<&str>) -> Turn {
     }
 }
 
-fn main() {
+fn get_final_pose(input_string: &str) -> Pose {
     let re = Regex::new(r"([RL])([:digit:]+)").unwrap();
-
     let mut pose = Pose{position: Vec2i::new(0,0), direction:  Vec2i::new(0,1)};
-
-    let mut input_string = String::new();
-    let mut file = File::open("input.txt").unwrap();
-    let _ = file.read_to_string(&mut input_string);
-
     for cap in re.captures_iter(&input_string) {
         let turn = as_direction(cap.at(1));
         let dist: i32 = cap.at(2).unwrap().parse().unwrap();
         pose = accumulate(pose, turn, dist);
     }
-    println!("Stopped at {:?}, distance {}", pose, pose.position.manhattan_magnitude());
+    pose
+}
+
+fn get_first_crossing(input_string: &str) -> Pose {
+    let re = Regex::new(r"([RL])([:digit:]+)").unwrap();
+    let mut pose = Pose{position: Vec2i::new(0,0), direction:  Vec2i::new(0,1)};
+    let mut history = HashSet::new();
+
+    'outer: for cap in re.captures_iter(&input_string) {
+        let turn = as_direction(cap.at(1));
+        let dist: i32 = cap.at(2).unwrap().parse().unwrap();
+
+        // Rotate without moving
+        pose.direction = rotated(pose.direction, turn);
+
+        // Accumulate <dist> steps of size 1
+        for _ in 0..dist {
+            pose = accumulate(pose, Turn::Straight, 1);
+
+            // Keep a history of positions
+            if history.contains(&pose.position) {
+                break 'outer;
+            }
+            history.insert(pose.position);
+        }
+    }
+    pose
+}
+
+fn main() {
+
+    let mut input_string = String::new();
+    let mut file = File::open("input.txt").unwrap();
+    let _ = file.read_to_string(&mut input_string);
+
+    // Part 1
+    {
+        let pose = get_final_pose(&input_string);
+        println!("Part 1: stopped at {:?}, distance {}",
+                 pose.position, pose.position.manhattan_magnitude());
+    }
+
+    // Part 2
+    {
+        let pose = get_first_crossing(&input_string);
+        println!("Part 2: stopped at {:?}, distance {}",
+                 pose.position, pose.position.manhattan_magnitude()); // 257 is too high. 105 is too low.
+    }
 }
 
 //-----------------------------------------------------------------------------
 
 #[test]
 fn test1() {
-    let re = Regex::new(r"([RL])([:digit:]+)").unwrap();
-
-    // Test 1
-    let mut pose = Pose{position: Vec2i::new(0,0), direction:  Vec2i::new(0,1)};
-    for cap in re.captures_iter("R2, L3") {
-        let turn = as_direction(cap.at(1));
-        let dist: i32 = cap.at(2).unwrap().parse().unwrap();
-        pose = accumulate(pose, turn, dist);
-    }
-    println!("{:?}", pose);
+    let pose = get_final_pose("R2, L3");
+    //println!("{:?}", pose);
     assert!(pose.position.x == 2);
     assert!(pose.position.y == 3);
     assert!(pose.position.manhattan_magnitude() == 5);
@@ -117,31 +153,24 @@ fn test1() {
 
 #[test]
 fn test2() {
-    let re = Regex::new(r"([RL])([:digit:]+)").unwrap();
-
-    // Test 1
-    let mut pose = Pose{position: Vec2i::new(0,0), direction:  Vec2i::new(0,1)};
-    for cap in re.captures_iter("R2, R2, R2") {
-        let turn = as_direction(cap.at(1));
-        let dist: i32 = cap.at(2).unwrap().parse().unwrap();
-        pose = accumulate(pose, turn, dist);
-    }
-    println!("{:?}", pose);
+    let pose = get_final_pose("R2, R2, R2");
+    //println!("{:?}", pose);
     assert!(pose.position.x == 0);
     assert!(pose.position.y == -2);
 }
 
 #[test]
 fn test3() {
-    let re = Regex::new(r"([RL])([:digit:]+)").unwrap();
-
-    // Test 1
-    let mut pose = Pose{position: Vec2i::new(0,0), direction:  Vec2i::new(0,1)};
-    for cap in re.captures_iter("R5, L5, R5, R3") {
-        let turn = as_direction(cap.at(1));
-        let dist: i32 = cap.at(2).unwrap().parse().unwrap();
-        pose = accumulate(pose, turn, dist);
-    }
-    println!("{:?}", pose);
+    let pose = get_final_pose("R5, L5, R5, R3");
+    //println!("{:?}", pose);
     assert!(pose.position.manhattan_magnitude() == 12);
+}
+
+#[test]
+fn revisit1() {
+    let pose = get_first_crossing("R8, R4, R4, R8");
+
+    println!("revisit1: stopped at {:?}, distance {}",
+             pose.position, pose.position.manhattan_magnitude()); // 257 is too high.
+    assert!(pose.position.manhattan_magnitude() == 4);
 }
