@@ -1,67 +1,43 @@
 
 use std::fs::File;
 use std::io::Read;
-use std::cmp;
 use std::fmt::Write;
 
-// Clamp val to [lower, upper]
-fn clamp<T: Ord>(val: T, lower: T, upper: T ) -> T {
-    cmp::min(cmp::max(val, lower), upper)
-}
+mod matrix; // Define that the file matrix.rs contains mod matrix
+use matrix::Matrix;
 
-#[derive(Eq,PartialEq,Copy,Clone,Hash,Debug)]
+#[derive(PartialEq,Copy,Clone,Debug)]
 struct State {
     x: i32,
     y: i32
 }
 
-fn get_key(state: &State) -> i32 {
-    let tupe = (state.x, state.y);
-    match tupe {
-        (-1, 1) => 1,
-        (0, 1) => 2,
-        (1, 1) => 3,
-        (-1, 0) => 4,
-        (0, 0) => 5,
-        (1, 0) => 6,
-        (-1, -1) => 7,
-        (0, -1) => 8,
-        (1, -1) => 9,
-        _ => panic!("Invalid state"),
-    }
-}
-
-// State is an integer pair in the range [-1,1][-1,1]
-// indicating distance from the center of the keypad
-// |1,2,3|
-// |4,5,6|
-// |7,8,9|
-fn advance_state(prev: &State, input: &char) -> State {
-    let mut next = match *input {
-        'U' => State{x:prev.x, y: prev.y+1},
-        'D' => State{x:prev.x, y: prev.y-1},
+// State is an integer pair indicating distance from upper left corner of the grid.
+fn advance_state_on_grid(prev: &State, input: &char, grid: &Matrix<char>) -> State {
+    let next = match *input {
+        'U' => State{x:prev.x, y: prev.y-1},
+        'D' => State{x:prev.x, y: prev.y+1},
         'L' => State{x:prev.x-1, y: prev.y},
         'R' => State{x:prev.x+1, y: prev.y},
         _ => panic!("unknown input"),
     };
-    next.x = clamp(next.x, -1, 1);
-    next.y = clamp(next.y, -1, 1);
-    next
+    if grid.is_valid(next.y, next.x, '-') {next} else {*prev}
 }
 
-
-fn process_sequence(input: &str ) -> String {
+fn process_sequence_on_grid(initial_state: &State,
+                            input: &str,
+                            grid: &Matrix<char>) -> String {
     let mut output = Vec::new();
-    let mut state = State{x:0, y:0};
+    let mut state = *initial_state;
     for line in input.lines() {
         for c in line.chars() {
-            state = advance_state(&state, &c);
+            state = advance_state_on_grid(&state, &c, &grid);
         }
-        let key = get_key(&state);
+        let key = grid.at(state.y as usize, state.x as usize);
         output.push(key);
     }
 
-    // Combine numbers into an output string
+    // Combine keys into an output string
     let mut output_str = String::new();
     for c in output {
         let _ = write!(&mut output_str, "{}", c);
@@ -75,13 +51,60 @@ fn main() {
     let mut file = File::open("input.txt").unwrap();
     let _ = file.read_to_string(&mut input_string);
 
-    let code = process_sequence(&input_string);
-    println!("Part 1 code: {}", code);
+    let simple_keypad = Matrix::from_array(3,3,
+        &['1','2','3',
+          '4','5','6',
+          '7','8','9']);
+
+    let initial_state1 = State{x:0, y:0};
+    let code1 = process_sequence_on_grid(&initial_state1, &input_string, &simple_keypad);
+    println!("Part 1 code: {}", code1);
+    assert!(code1 == "78985");
+
+
+    let complex_keypad = Matrix::from_array(5,5,
+        &['-','-','1','-','-',
+          '-','2','3','4','-',
+          '5','6', '7','8','9',
+          '-','A','B','C','-',
+          '-','-','D','-','-']);
+
+    let initial_state2 = State{x:0, y:2}; // Key 5
+    let code2 = process_sequence_on_grid(&initial_state2, &input_string, &complex_keypad);
+    println!("Part 2 code: {}", code2);
+    assert!(code2 == "57DD8");
 }
 
 #[test]
-fn test1() {
-    let code = process_sequence("ULL\nRRDDD\nLURDL\nUUUUD");
+fn test_simple() {
+
+    let keypad = Matrix::from_array(3,3,
+                 &['1','2','3',
+                  '4','5','6',
+                  '7','8','9']);
+
+    let initial_state = State{x:1, y:1};
+    let code = process_sequence_on_grid(&initial_state,
+                                        "ULL\nRRDDD\nLURDL\nUUUUD",
+                                        &keypad);
     println!("{}", code);
     assert!(code == "1985");
+}
+
+#[test]
+fn test_complex() {
+
+    let keypad = Matrix::from_array(5,5,
+        &['-','-','1','-','-',
+          '-','2','3','4','-',
+          '5','6', '7','8','9',
+          '-','A','B','C','-',
+          '-','-','D','-','-']);
+
+    let initial_state = State{x:0, y:2}; // Key 5
+    let code = process_sequence_on_grid(&initial_state,
+                                        "ULL\nRRDDD\nLURDL\nUUUUD",
+                                        &keypad);
+    println!("{}", code);
+    assert!(code == "5DB3");
 }
