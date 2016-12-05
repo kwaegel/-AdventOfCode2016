@@ -1,4 +1,5 @@
 
+use std::str;
 use std::u32;
 use std::fmt::Write;
 
@@ -16,6 +17,12 @@ fn first_five_hex_zero(input: &[u8; 16]) -> bool {
 fn get_sixth_hex_char(input: &[u8; 16]) -> char {
     let mut buff = String::new();
     let _ = write!(buff,"{:x}", input[2]);
+    buff.as_bytes()[0] as char
+}
+
+fn get_seventh_hex_char(input: &[u8; 16]) -> char {
+    let mut buff = String::new();
+    let _ = write!(buff,"{:x}", input[3] >> 4);
     buff.as_bytes()[0] as char
 }
 
@@ -42,7 +49,6 @@ fn main() {
 
         if first_five_hex_zero(&hash_output) {
             let next_char = get_sixth_hex_char(&hash_output);
-            //let next_char = hash_output[0] as char;
             password.push(next_char);
         }
 
@@ -50,12 +56,43 @@ fn main() {
             break;
         }
     }
-    if password.len() < target_password_length {
-        println!("Could not find password. Latest attempt: {}", password)
-    } else {
-        println!("Part1: password = '{}'", password);
-    }
+    println!("Part 1: password = '{}'", password);
     assert!(password == "f97c354d");
+
+    // Part 2
+    let mut password_part2_bytes = [0u8; 8]; //"        ".as_bytes();
+    let mut set_characters = 0;
+    // Loop through door_id + [0..max] to find hashes that
+    // start with five zeros
+    for i in 0..u32::max_value() {
+        let mut test_value = String::new();
+        let _ = write!(test_value,"{}{}", door_id, i);
+        hasher.reset();
+        hasher.input(test_value.as_bytes());
+        hasher.result(&mut hash_output);
+
+        if first_five_hex_zero(&hash_output) {
+            let next_pos = get_sixth_hex_char(&hash_output);
+            let next_char = get_seventh_hex_char(&hash_output);
+
+            if let Some(index) = next_pos.to_digit(10) {
+                if index < 8 {
+                    if password_part2_bytes[index as usize] == 0 {
+                        password_part2_bytes[index as usize] = next_char as u8;
+                        set_characters += 1;
+                    }
+                }
+            }
+        }
+
+        if set_characters == target_password_length {
+            break;
+        }
+    }
+
+    let password_part2 = str::from_utf8(&password_part2_bytes).unwrap();
+    println!("Part 2: password = '{}'", password_part2);
+    assert!(password_part2 == "863dde27");
 }
 
 #[test]
@@ -68,13 +105,8 @@ fn test1() {
 
     let mut buff = [0;16];
     hasher.result(&mut buff);
-    let test_char1 = get_sixth_hex_char(&buff);
-    println!("{}", test_char1);
-    //assert!(test_char1 == '');
-
-    let test_value2 = "abc5017308";
-    hasher.reset();
-    hasher.input(test_value2.as_bytes());
-    let hash_result2 = hasher.result_str();
-    println!("{}", hash_result2);
+    let position = get_sixth_hex_char(&buff);
+    let character = get_seventh_hex_char(&buff);
+    println!("pos: {}", position);
+    println!("chr: {}", character);
 }
