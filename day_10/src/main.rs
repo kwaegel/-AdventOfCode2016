@@ -60,7 +60,7 @@ fn require_bot(bots: &mut Vec<Bot>, bot_id: i32) {
 }
 
 // Find the bot ID required to process [low_id, high_id]
-fn process(input: &str, low_id: i32, high_id: i32) -> i32 {
+fn process(input: &str, low_id: i32, high_id: i32) -> (HashMap<i32, i32>, i32) {
 
     let mut target_bot = -1i32;
 
@@ -70,7 +70,8 @@ fn process(input: &str, low_id: i32, high_id: i32) -> i32 {
     let regex_initial = Regex::new("value ([:digit:]+) goes to bot ([:digit:]+)").unwrap();
 
     let regex_bot = Regex::new("bot ([:digit:]+) gives low to ([:alpha:]+) ([:digit:]+) and high \
-                                to ([:alpha:]+) ([:digit:]+)").unwrap();
+                                to ([:alpha:]+) ([:digit:]+)")
+        .unwrap();
 
     // Parse hand-off rules and initial state
     for line in input.lines() {
@@ -108,7 +109,7 @@ fn process(input: &str, low_id: i32, high_id: i32) -> i32 {
         for i in 0..bots.len() {
 
             if bots[i].chip_low == low_id && bots[i].chip_high == high_id {
-               target_bot = i as i32;
+                target_bot = i as i32;
             }
 
             if bots[i].chip_low >= 0 && bots[i].chip_high >= 0 {
@@ -118,16 +119,20 @@ fn process(input: &str, low_id: i32, high_id: i32) -> i32 {
                         let id = bots[i].chip_low;
                         bots[target_id as usize].add_chip(id);
                     }
-                    Dest::Output(output_bin) => { output.insert(output_bin, bots[i].chip_low);}
-                    Dest::None => panic!("Low output unspecified")
+                    Dest::Output(output_bin) => {
+                        output.insert(output_bin, bots[i].chip_low);
+                    }
+                    Dest::None => panic!("Low output unspecified"),
                 }
                 match bots[i].output_high {
                     Dest::Bot(target_id) => {
                         let id = bots[i].chip_high;
                         bots[target_id as usize].add_chip(id);
                     }
-                    Dest::Output(output_bin) => { output.insert(output_bin, bots[i].chip_high);}
-                    Dest::None => panic!("High output unspecified")
+                    Dest::Output(output_bin) => {
+                        output.insert(output_bin, bots[i].chip_high);
+                    }
+                    Dest::None => panic!("High output unspecified"),
                 }
                 bots[i].chip_low = -1;
                 bots[i].chip_high = -1;
@@ -138,7 +143,7 @@ fn process(input: &str, low_id: i32, high_id: i32) -> i32 {
         }
     }
 
-    target_bot
+    (output, target_bot)
 }
 
 fn main() {
@@ -146,21 +151,29 @@ fn main() {
     let mut file = File::open("input.txt").unwrap();
     let _ = file.read_to_string(&mut input_string);
 
-    let target_bot = process(&input_string, 17, 61);
-    println!("Bot {} compares chips {} and {}", target_bot, 17, 61);
+    let results = process(&input_string, 17, 61);
+    println!("Part 1: Bot {} compares chips {} and {}", results.1, 17, 61);
+
+    let val_0 = results.0.get(&0).unwrap();
+    let val_1 = results.0.get(&1).unwrap();
+    let val_2 = results.0.get(&2).unwrap();
+    let product = val_0 * val_1 * val_2;
+    println!("Part 2: Product of output[0,1,2] is {}", product);
 }
 
 #[test]
 fn test() {
-    let test_data =
-    "value 5 goes to bot 2\n
+    let test_data = "value 5 goes to bot 2\n
     bot 2 gives low to bot 1 and high to bot 0\n
-    value 3 goes to bot 1\n
+    \
+                     value 3 goes to bot 1\n
     bot 1 gives low to output 1 and high to bot 0\n
-    bot 0 gives low to output 2 and high to output 0\n
-    value 2 goes to bot 2\n";
+    \
+                     bot 0 gives low to output 2 and high to output 0\n
+    value 2 goes to bot \
+                     2\n";
 
-    let test_target_bot = process(test_data, 2, 5);
-    println!("Bot {} compares chips {} and {}", test_target_bot, 2, 5);
-    assert!(test_target_bot == 2);
+    let results = process(test_data, 2, 5);
+    println!("Bot {} compares chips {} and {}", results.1, 2, 5);
+    assert!(results.1 == 2);
 }
