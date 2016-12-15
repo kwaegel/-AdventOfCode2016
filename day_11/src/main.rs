@@ -1,4 +1,3 @@
-#![feature(step_by)]
 
 use std::fs::File;
 use std::io::Read;
@@ -12,8 +11,11 @@ extern crate lazy_static;
 extern crate regex;
 use regex::Regex;
 
+mod bit_floor;
+use bit_floor::BitFloor;
+
 #[derive(Debug,PartialEq,Eq,Clone,Copy)]
-enum Material {
+pub enum Material {
     Hydrogen = 0,
     Lithium = 1,
     Polonium = 2,
@@ -44,98 +46,49 @@ impl FromStr for Material {
 // Materials stored as a bool array, in [generator, chip] pairs.
 // Gen  location = material_id*2
 // Chip location = material_id*2 + 1,
-const FLOOR_SIZE: usize = 14;
-
-#[derive(Debug,PartialEq,Eq,Clone,Copy)]
-struct Floor {
-    items: [bool; FLOOR_SIZE],
-}
-impl Floor {
-    fn new() -> Floor {
-        Floor { items: [false; FLOOR_SIZE] }
-    }
-    // A floor is "safe" if for each material_id*2, the previous cell is also set.
-    fn is_safe(&self) -> bool {
-
-        let mut has_gen = false;
-        for gen_id in (0..14).step_by(2) {
-            if self.items[gen_id] {
-                has_gen = true;
-                break;
-            }
-        }
-        // A floor without generators is always safe.
-        if !has_gen {
-            //println!("Safe: no generators");
-            return true;
-        }
-
-        for gen_id in (0..14).step_by(2) {
-            let has_gen = self.items[gen_id];
-            let has_chip = self.items[gen_id+1];
-            if has_chip && !has_gen  {
-//                println!("Not safe! gen [{}] = {}, chip [{}] = {}",
-//                         gen_id, self.items[gen_id],
-//                         gen_id+1, self.items[gen_id+1]);
-                return false;
-            }
-        }
-        true
-    }
-    fn add_chip(&mut self, item: Material) {
-        //println!("Adding chip in cell {}", item as usize * 2+1);
-        self.items[item as usize * 2 + 1] = true;
-    }
-    fn add_gen(&mut self, item: Material) {
-        //println!("Adding gen in cell {}", item as usize * 2);
-        self.items[item as usize * 2] = true;
-    }
-}
+const FLOOR_SIZE: usize = 15;
 
 // -----------------------------------------------------------------------------
 
 #[derive(Debug,PartialEq,Eq,Clone,Copy)]
 struct Building {
-    floors: [Floor; 4],
+    floors: [BitFloor; 4],
     elevator_idx: usize,
 }
 impl Building {
     fn new() -> Building {
         Building {
-            floors: [Floor::new(); 4],
+            floors: [BitFloor::new(); 4],
             elevator_idx: 0,
         }
     }
 
     fn item_exists(&self, item: usize) -> bool {
-        self.floors[self.elevator_idx].items[item]
+        self.floors[self.elevator_idx].is_set(item)
+
     }
 
     fn is_safe(&self) -> bool {
-        for floor in self.floors.iter() {
-            if !floor.is_safe() {
-                return false;
-            }
-        }
-        true
+        self.floors.iter().all(|&floor| floor.is_safe())
     }
     // Check if everything is on the fourth floor (floors 0-2 are empty)
     fn is_final(&self) -> bool {
-        let sum: usize = self.floors[3].items.iter().map(|&b| if b { 1 } else { 0 }).sum();
-        sum == 4 || sum == 10 // 4 for example data, 10 for input file
+        self.floors[0].is_empty()
+        && self.floors[1].is_empty()
+        && self.floors[2].is_empty()
     }
 
     // Try to move one or more items up a floor and return the new building state.
     fn try_move_up(&self, item_1: usize, item_2: usize) -> Option<Building> {
-        if self.elevator_idx < 3 && self.floors[self.elevator_idx].items[item_1] &&
-           self.floors[self.elevator_idx].items[item_2] {
+        if self.elevator_idx < 3 && self.floors[self.elevator_idx].is_set(item_1) &&
+           self.floors[self.elevator_idx].is_set(item_2) {
             let mut next = self.clone();
 
-            next.floors[next.elevator_idx].items[item_1] = false;
-            next.floors[next.elevator_idx + 1].items[item_2] = true;
+            next.floors[next.elevator_idx].clear(item_1);
+            next.floors[next.elevator_idx + 1].set(item_1);
 
-            next.floors[next.elevator_idx].items[item_2] = false;
-            next.floors[next.elevator_idx + 1].items[item_1] = true;
+            next.floors[next.elevator_idx].clear(item_2);
+            next.floors[next.elevator_idx + 1].set(item_2);
 
             next.elevator_idx += 1;
             if next.is_safe() {
@@ -150,15 +103,15 @@ impl Building {
 
     // Try to move one or more items up a floor and return the new building state.
     fn try_move_down(&self, item_1: usize, item_2: usize) -> Option<Building> {
-        if self.elevator_idx > 0 && self.floors[self.elevator_idx].items[item_1] &&
-           self.floors[self.elevator_idx].items[item_2] {
+        if self.elevator_idx > 0 && self.floors[self.elevator_idx].is_set(item_1) &&
+           self.floors[self.elevator_idx].is_set(item_2) {
             let mut next = self.clone();
 
-            next.floors[next.elevator_idx].items[item_1] = false;
-            next.floors[next.elevator_idx - 1].items[item_2] = true;
+            next.floors[next.elevator_idx].clear(item_1);
+            next.floors[next.elevator_idx - 1].set(item_1);
 
-            next.floors[next.elevator_idx].items[item_2] = false;
-            next.floors[next.elevator_idx - 1].items[item_1] = true;
+            next.floors[next.elevator_idx].clear(item_2);
+            next.floors[next.elevator_idx - 1].set(item_2);
 
             next.elevator_idx -= 1;
             if next.is_safe() {
@@ -177,7 +130,7 @@ impl fmt::Display for Building {
             let n = 3-i;
             write!(f, "F{} {} ", n, if n==self.elevator_idx {"E"} else {"."})?;
             for item in 0..FLOOR_SIZE {
-                write!(f, "{}", if self.floors[n].items[item] {"# "} else {". "})?;
+                write!(f, "{}", if self.floors[n].is_set(item) {"# "} else {". "})?;
             }
             writeln!(f, "")?;
         }
@@ -188,7 +141,7 @@ impl fmt::Display for Building {
 // -----------------------------------------------------------------------------
 
 const NO_PATH: usize = std::usize::MAX - 1;
-static mut MAX_DEPTH: usize = 50;
+static mut MAX_DEPTH: usize = 12;
 
 // Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
 // fn process(input_state: &Building, current_floor: usize, depth: usize) -> usize {
@@ -199,7 +152,8 @@ fn process(states: &mut Vec<Building>) -> usize {
 
     let current_idx = states.len() - 1;
 
-    // println!("Checking state {}", current_idx);
+//    println!("Checking state {}", current_idx);
+//    println!("Checking state\n{}", states[current_idx]);
 
     unsafe {
         if states.len() > MAX_DEPTH {
@@ -216,9 +170,7 @@ fn process(states: &mut Vec<Building>) -> usize {
 //        }
 //        panic!("ended early for debugging");
 
-
-        println!("Found solution at state vector size {}", states.len());
-
+        //println!("Found solution at state vector size {}", states.len());
         return states.len();
     }
 
@@ -327,6 +279,8 @@ fn main() {
     assert!(steps == 11);
 }
 
+// -----------------------------------------------------------------------------
+
 #[test]
 fn test_example_input() {
     let test_input = "The first floor contains a hydrogen-compatible microchip and a \
@@ -337,7 +291,7 @@ fn test_example_input() {
     let building = read_input(&test_input);
     assert!(building.is_safe());
 
-    //println!("Building:\n{}", &building);
+    println!("Building:\n{}", &building);
 
     let mut states = Vec::new();
     unsafe { states.reserve(MAX_DEPTH+1); }
@@ -353,15 +307,35 @@ fn test_example_input() {
 }
 
 #[test]
-fn safety_test() {
+fn test_safe() {
     let mut building = Building::new();
 
-    building.floors[1].add_chip(Material::Hydrogen);
     building.floors[1].add_gen(Material::Hydrogen);
+    building.floors[1].add_chip(Material::Hydrogen);
     building.floors[1].add_chip(Material::Lithium);
 
     building.floors[2].add_gen(Material::Lithium);
 
-    println!("Building:\n{}", &building);
+    //println!("Building:\n{}", &building);
+
+    assert!(!building.floors[1].is_safe());
+
     assert!(!building.is_safe());
+}
+
+#[test]
+fn test_not_safe() {
+    let mut building = Building::new();
+
+    building.floors[1].add_gen(Material::Hydrogen);
+    building.floors[1].add_chip(Material::Hydrogen);
+    building.floors[0].add_chip(Material::Lithium);
+
+    building.floors[2].add_gen(Material::Lithium);
+
+    //println!("Building:\n{}", &building);
+
+    assert!(building.floors[1].is_safe());
+
+    assert!(building.is_safe());
 }
