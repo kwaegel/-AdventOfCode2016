@@ -8,7 +8,7 @@ const CHIP_MASK: u32 = 0x_AA_AA_AA_AA_u32; // alternating, with low bit = false.
 const GEN_MASK: u32 = 0x_55_55_55_55_u32; // alternating, with low bit = true.
 
 
-#[derive(Debug,PartialEq,Eq,Clone,Copy)]
+#[derive(Debug,PartialEq,Eq,Clone,Copy,Hash)]
 pub struct BitFloor {
     bits: u32
 }
@@ -62,5 +62,9 @@ impl BitFloor {
 
     pub fn clear(&mut self, index: usize) {
         self.bits &= !(0x1 << index);
+    }
+
+    pub fn num_items(&self) -> u32 {
+        self.bits.count_ones()
     }
 }
