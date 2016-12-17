@@ -8,7 +8,7 @@ const CHIP_MASK: u32 = 0x_AA_AA_AA_AA_u32; // alternating, with low bit = false.
 const GEN_MASK: u32 = 0x_55_55_55_55_u32; // alternating, with low bit = true.
 
 
-#[derive(Debug,PartialEq,Eq,Clone,Copy,Hash)]
+#[derive(Debug,Clone,Copy)]
 pub struct BitFloor {
     bits: u32
 }
@@ -28,11 +28,6 @@ impl BitFloor {
 
         // Shifting the chip bits down by one lets us check the corresponding gens.
         let unmatched_chips = (chip_bits >> 1) & !gen_bits;
-
-//        println!("chip bits:   {:032b}", chip_bits);
-//        println!("shift chips: {:032b}", chip_bits >> 1);
-//        println!("gen bits:    {:032b}", gen_bits);
-//        println!("unmatched    {:032b}", unmatched_chips);
 
         chip_bits == 0 || gen_bits == 0 || unmatched_chips == 0
     }
@@ -67,4 +62,55 @@ impl BitFloor {
     pub fn num_items(&self) -> u32 {
         self.bits.count_ones()
     }
+
+    pub fn num_pairs(&self) -> u32 {
+        // Shifting the chip bits down by one lets us check the corresponding gens.
+        let gen_bits = self.bits & GEN_MASK;
+        let chip_bits = self.bits & CHIP_MASK;
+        ((chip_bits >> 1) & gen_bits).count_ones()
+    }
+
+    // All bits that are part of a [chip,gen] pair.
+    pub fn paired_bits(&self) -> u32 {
+        let gen_bits = self.bits & GEN_MASK;
+        let chip_bits = self.bits & CHIP_MASK;
+        // This gives us a high bit in the low-order part of each matched pair.
+        let paired_gens = ((chip_bits >> 1) & gen_bits).count_ones();
+        paired_gens & (paired_gens << 1)
+    }
+
+    // All bits that are *not* part of a [chip,gen] pair.
+    pub fn unpaired_bits(&self) -> u32 {
+        self.bits & !self.paired_bits()
+    }
+
+    pub fn unpaired_indices(&self) -> Vec<usize> {
+        let mut indices = Vec::with_capacity(14);
+        let unpaired = self.unpaired_bits();
+        for i in 0..14 {
+            if unpaired & (1<<i) > 0 {
+                indices.push(i)
+            }
+        }
+        indices
+    }
+
+    pub fn first_paired_indices(&self) -> Vec<usize> {
+        let unpaired = self.paired_bits();
+        for i in 0..14 {
+            if unpaired & (1<<i) > 0 {
+                return vec!(i, i+1)
+            }
+        }
+        Vec::new()
+    }
 }
+
+impl PartialEq for BitFloor {
+    fn eq(&self, other: &BitFloor) -> bool {
+        // Note that {Chip,Gen} pairs are equivalent, and can be treated as identical units.
+        self.num_pairs() == other.num_pairs()
+        && self.unpaired_bits() == other.unpaired_bits()
+    }
+}
+impl Eq for BitFloor {}

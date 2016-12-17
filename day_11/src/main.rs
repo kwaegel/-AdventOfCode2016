@@ -4,9 +4,6 @@ use std::io::Read;
 use std::str::FromStr;
 use std::cmp;
 use std::fmt;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::collections::BinaryHeap;
 
 #[macro_use]
 extern crate lazy_static;
@@ -53,7 +50,7 @@ const FLOOR_SIZE: usize = 11;
 
 // -----------------------------------------------------------------------------
 
-#[derive(Debug,PartialEq,Eq,Clone,Copy,Hash)]
+#[derive(Debug,Clone,Copy)]
 struct Building {
     floors: [BitFloor; 4],
     elevator_idx: usize,
@@ -154,152 +151,76 @@ impl fmt::Display for Building {
     }
 }
 
-// For sorting in a priority queue.
-impl Ord for Building {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Normally "(self.distance()).cmp(&other.distance())", but inverted for a min-heap.
-        (other.distance()).cmp(&self.distance())
+impl PartialEq for Building {
+    fn eq(&self, other: &Building) -> bool {
+        self.floors[0] == other.floors[0] &&
+        self.floors[1] == other.floors[1] &&
+        self.floors[2] == other.floors[2] &&
+        self.floors[3] == other.floors[3]
     }
 }
-
-impl PartialOrd for Building {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
+impl Eq for Building {}
 
 // -----------------------------------------------------------------------------
 
 const NO_PATH: usize = std::usize::MAX - 1;
-const MAX_DEPTH: usize = 20;
+const MAX_DEPTH: usize = 500;
 
 // Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
-// fn process(input_state: &Building, current_floor: usize, depth: usize) -> usize {
+fn process_dfs(current: &Building, history: &mut Vec<Building>, max_depth: usize) -> usize {
 
-// Input: stack of building states, the current one at states[states.len()-1];
-// Returns: size of the stack when is_final() on the last state is true.
-fn process_dfs(states: &mut Vec<Building>, max_depth: usize) -> usize {
-
-    let current_idx = states.len() - 1;
-
-//    println!("Checking state {}", current_idx);
-//    println!("Checking state\n{}", states[current_idx]);
-
-    if states.len() > max_depth {
+    if current.depth > max_depth {
         return NO_PATH;
     }
 
-    if states[current_idx].is_final() {
-        // Print the list of moves for debugging
-
-//        println!("Found solution at state vector size {}", states.len());
-//        for state in states {
-//            println!("{}", state);
-//        }
-//        panic!("ended early for debugging");
-
-        //println!("Found solution at state vector size {}", states.len());
-        return states.len();
-    }
-
-    let mut fewest_steps = NO_PATH;
-
-    // Pick pairs of items to move
-    for item_1 in 0..FLOOR_SIZE {
-        // Need at least one item to move
-        if !states[current_idx].item_exists(item_1) {
-            continue;
-        }
-
-        // When item_2 == item_1, we only move one item.
-        for item_2 in item_1..FLOOR_SIZE {
-            if !states[current_idx].item_exists(item_2) {
-                continue;
-            }
-
-            // println!("Moving items {} and {}", item_1, item_2);
-
-            // Try moving both items up or down
-            let next_up = states[current_idx].try_move_up(item_1, item_2);
-            if let Some(next_state) = next_up {
-
-                // Check against prior state back to avoid backtracking.
-                let is_cycle = states.contains(&next_state);
-
-                if !is_cycle {
-                    states.push(next_state);
-                    let steps = process_dfs(states, max_depth);
-                    fewest_steps = cmp::min(fewest_steps, steps);
-                    states.pop();
-                }
-            }
-
-            let next_down = states[current_idx].try_move_down(item_1, item_2);
-            if let Some(next_state) = next_down {
-
-                // Check against prior state back to avoid backtracking.
-                let is_cycle = states.contains(&next_state);
-                if !is_cycle {
-                    states.push(next_state);
-                    let steps = process_dfs(states, max_depth);
-                    fewest_steps = cmp::min(fewest_steps, steps);
-                    states.pop();
-                }
-            }
-        }
-    }
-    fewest_steps
-}
-
-// -----------------------------------------------------------------------------
-
-// Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
-fn process_recursive(input_state: &Building, depth: usize, history: &mut HashSet<Building>, max_depth: usize) -> usize {
-
-    if depth > max_depth {
-        return NO_PATH;
-    }
-
-    if input_state.is_final() {
+    if current.is_final() {
+        println!("Found target at depth {}", current.depth);
         return 0;
     }
 
     let mut fewest_steps = NO_PATH;
 
-    // Pick pairs of items to move
+    // Optimization: only try to move the first set of paired items, since they are
+    // logically equivalent.
+    // Then move all the unpaired items.
+//    let mut first_paired_indices = current.floors[current.elevator_idx].first_paired_indices();
+//    let mut indices = current.floors[current.elevator_idx].unpaired_indices();
+//    indices.append(&mut first_paired_indices);
+
+
+    // Generate future states by moving one or two items
+    // When item_2 == item_1, we only move one item.
     for item_1 in 0..FLOOR_SIZE {
-
-        if !input_state.item_exists(item_1) {
-            continue;
-        }
-
-        // Starting the inner loop from item_1 cover the case of moving just one item.
+        if !current.item_exists(item_1) { continue; }
         for item_2 in item_1..FLOOR_SIZE {
-            if !input_state.item_exists(item_2) {
-                continue;
-            }
+            if !current.item_exists(item_2) { continue; }
+//    for item_1_idx in 0..indices.len() {
+//        let item_1 = indices[item_1_idx];
+//        for item_2_idx in item_1_idx..indices.len() {
+//            let item_2 = indices[item_2_idx];
 
 
             // Try moving both items up or down
-            if let Some(next_state) = input_state.try_move_up(item_1, item_2) {
-                if !history.contains(&next_state) {
-                    let steps = process_recursive(&next_state, depth + 1, history, max_depth) + 1;
+            if let Some(next) = current.try_move_up(item_1, item_2) {
+                if !history.contains(&next) {
+                    history.push(next);
+                    let steps = process_dfs(&next, history, max_depth) + 1;
                     fewest_steps = cmp::min(fewest_steps, steps);
+                    history.pop();
                 }
             }
 
             // Try moving both items up or down
-            if let Some(next_state) = input_state.try_move_down(item_1, item_2) {
-                if !history.contains(&next_state) {
-                    let steps = process_recursive(&next_state, depth + 1, history, max_depth) + 1;
+            if let Some(next) = current.try_move_down(item_1, item_2) {
+                if !history.contains(&next) {
+                    history.push(next);
+                    let steps = process_dfs(&next, history, max_depth) + 1;
                     fewest_steps = cmp::min(fewest_steps, steps);
+                    history.pop();
                 }
             }
         }
     }
-        if fewest_steps < NO_PATH {
-            println!("Path: {}", fewest_steps);
-        }
 
     fewest_steps
 }
@@ -307,105 +228,15 @@ fn process_recursive(input_state: &Building, depth: usize, history: &mut HashSet
 // -----------------------------------------------------------------------------
 
 // Iterative deepening
-fn process_id(states: &mut Vec<Building>) -> usize {
-    for i in 1..20 {
-        println!("Trying depth {}...", i);
-        let steps = process_dfs(states, i);
+fn process_id(initial: &Building) -> usize {
+    for i in 1..MAX_DEPTH {
+        println!("Searching DFS with max depth {}...", i);
+        let mut history = Vec::new();
+        let steps = process_dfs(initial, &mut history, i);
         if steps < NO_PATH {
             return steps;
         }
     }
-    NO_PATH
-}
-
-// -----------------------------------------------------------------------------
-
-fn process_bfs(initial_state: &Building) -> usize {
-
-    let mut queue = VecDeque::new();
-    queue.push_back(*initial_state);
-
-    // Prevent cycles
-    let mut history = HashSet::new();
-    history.insert(*initial_state);
-
-    // Effectively an infinite loop, given the size of the search space.
-    while let Some(current_state) = queue.pop_front() {
-        if current_state.is_final() {
-            return current_state.depth;
-        }
-
-        // Generate future states by moving one or two items
-        // When item_2 == item_1, we only move one item.
-        for item_1 in 0..FLOOR_SIZE {
-            if !current_state.item_exists(item_1) { continue; }
-            for item_2 in item_1..FLOOR_SIZE {
-                if !current_state.item_exists(item_2) { continue; }
-
-                // println!("Moving items {} and {}", item_1, item_2);
-
-                if let Some(next) = current_state.try_move_up(item_1, item_2) {
-                    if !history.contains(&next) {
-                        queue.push_back(next);
-                    }
-                }
-
-                if let Some(next) = current_state.try_move_down(item_1, item_2) {
-                    if !history.contains(&next) {
-                        queue.push_back(next);
-                    }
-                }
-            }
-        }
-
-    } // end queue loop
-    NO_PATH
-}
-
-// -----------------------------------------------------------------------------
-
-fn process_best_first(initial_state: &Building) -> usize {
-
-    let mut queue = BinaryHeap::new();
-    queue.push(*initial_state);
-
-    // Prevent cycles
-    let mut history = HashSet::new();
-    history.insert(*initial_state);
-
-    // Effectively an infinite loop, given the size of the search space.
-    while let Some(current_state) = queue.pop() {
-
-        println!("testing\n{}", &current_state);
-
-        if current_state.is_final() {
-            return current_state.depth;
-        }
-
-        // Generate future states by moving one or two items
-        // When item_2 == item_1, we only move one item.
-        for item_1 in 0..FLOOR_SIZE {
-            if !current_state.item_exists(item_1) { continue; }
-            for item_2 in item_1..FLOOR_SIZE {
-                if !current_state.item_exists(item_2) { continue; }
-
-                // println!("Moving items {} and {}", item_1, item_2);
-
-                if let Some(next) = current_state.try_move_up(item_1, item_2) {
-                    if !history.contains(&next) {
-                        queue.push(next);
-                    }
-                }
-
-                if let Some(next) = current_state.try_move_down(item_1, item_2) {
-                    if !history.contains(&next) {
-                        queue.push(next);
-                    }
-                }
-            }
-        }
-
-    } // end queue loop
     NO_PATH
 }
 
@@ -444,16 +275,9 @@ fn main() {
     let building = read_input(&input_string);
 
     println!("Searching for solution...");
-    let steps = process_bfs(&building);
-
-//    let mut states = Vec::new();
-//    unsafe { states.reserve(MAX_DEPTH+1); }
-//    states.push(building);
-//
-//    println!("Searching for solution...");
-//    let mut steps = process_id(&mut states);
-//    steps -= 1; // Subtract 1 for the initial state.
-//    //let steps = process_recursive(&building, 0);
+    let steps = process_id(&building);
+    //let mut history = Vec::new();
+    //let steps = process_dfs(&building, &mut history, 10000);
 
     println!("Part 1: steps = {:?}", steps);
     //assert!(steps == 11);
@@ -462,7 +286,7 @@ fn main() {
 // -----------------------------------------------------------------------------
 
 #[test]
-fn test_example_input() {
+fn test_id() {
     let test_input = "The first floor contains a hydrogen-compatible microchip and a \
                       lithium-compatible microchip.\nThe second floor contains a hydrogen \
                       generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
@@ -473,87 +297,13 @@ fn test_example_input() {
 
     println!("Building:\n{}", &building);
 
-    let mut states = Vec::new();
-    states.reserve(MAX_DEPTH+1);
-    states.push(building);
-
     println!("Searching for solution...");
-    //let mut steps = process_id(&mut states);
-    //steps -= 1; // Subtract 1 for the initial state.
-
-    let mut history = HashSet::new();
-    let steps = process_recursive(&building, 0, &mut history, MAX_DEPTH);
+    let steps = process_id(&building);
 
     println!("Example data: steps = {:?}", steps);
     assert!(steps < NO_PATH);
     assert!(steps == 11);
 }
-
-#[test]
-fn test_recursive() {
-    let test_input = "The first floor contains a hydrogen-compatible microchip and a \
-                      lithium-compatible microchip.\nThe second floor contains a hydrogen \
-                      generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
-                      contains nothing relevant.\n";
-
-    let building = read_input(&test_input);
-    assert!(building.is_safe());
-
-    println!("Building:\n{}", &building);
-
-    let mut states = Vec::new();
-    unsafe { states.reserve(MAX_DEPTH+1); }
-    states.push(building);
-
-    println!("Searching for solution...");
-    let mut history = HashSet::new();
-    let steps = process_recursive(&building, 0, &mut history, MAX_DEPTH);
-
-    println!("Example data: steps = {:?}", steps);
-    assert!(steps < NO_PATH);
-    assert!(steps == 11);
-}
-
-#[test]
-fn test_bfs() {
-    let test_input = "The first floor contains a hydrogen-compatible microchip and a \
-                      lithium-compatible microchip.\nThe second floor contains a hydrogen \
-                      generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
-                      contains nothing relevant.\n";
-
-    let building = read_input(&test_input);
-    assert!(building.is_safe());
-
-    println!("Building:\n{}", &building);
-    println!("Searching for solution...");
-
-    let steps = process_bfs(&building);
-
-    println!("Example data: steps = {:?}", steps);
-    assert!(steps < NO_PATH);
-    assert!(steps == 11);
-}
-
-#[test]
-fn test_best_first() {
-    let test_input = "The first floor contains a hydrogen-compatible microchip and a \
-                      lithium-compatible microchip.\nThe second floor contains a hydrogen \
-                      generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
-                      contains nothing relevant.\n";
-
-    let building = read_input(&test_input);
-    assert!(building.is_safe());
-
-    println!("Building:\n{}", &building);
-    println!("Searching for solution...");
-
-    let steps = process_best_first(&building);
-
-    println!("Example data: steps = {:?}", steps);
-    assert!(steps < NO_PATH);
-    assert!(steps == 11);
-}
-
 
 #[test]
 fn test_safe() {
