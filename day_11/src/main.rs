@@ -4,6 +4,9 @@ use std::io::Read;
 use std::str::FromStr;
 use std::cmp;
 use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 
 #[macro_use]
 extern crate lazy_static;
@@ -161,10 +164,79 @@ impl PartialEq for Building {
 }
 impl Eq for Building {}
 
+impl Hash for Building {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.floors[0].hash(state);
+        self.floors[1].hash(state);
+        self.floors[2].hash(state);
+        self.floors[3].hash(state);
+    }
+}
+
 // -----------------------------------------------------------------------------
 
 const NO_PATH: usize = std::usize::MAX - 1;
-const MAX_DEPTH: usize = 500;
+const MAX_DEPTH: usize = 12;
+
+// Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
+fn process_dfs_global(current: &Building,
+                      path: &mut Vec<Building>,
+                      history: &mut HashSet<Building>,
+                      max_depth: usize) -> usize {
+
+    if current.depth > max_depth {
+        return NO_PATH;
+    }
+
+    println!("Visiting state at depth {}:\n{}", path.len()+1, current);
+
+    // Skip already visited states.
+    // "If the set did not have this value present, true is returned."
+    //
+    // NOTE: if the current state has a shorter path then the previous
+    // one we need to process it to ensure finding a shortest path.
+    if let Some(previous_state) = history.replace(*current) {
+        if previous_state.depth <= current.depth {
+            return NO_PATH;
+        }
+    }
+
+    path.push(*current);
+
+    if current.is_final() {
+        println!("Found target at depth {}", current.depth);
+        return 0;
+    }
+
+    let mut fewest_steps = NO_PATH;
+
+    // Generate future states by moving one or two items
+    // When item_2 == item_1, we only move one item.
+    for item_1 in 0..FLOOR_SIZE {
+        if !current.item_exists(item_1) { continue; }
+        for item_2 in item_1..FLOOR_SIZE {
+            if !current.item_exists(item_2) { continue; }
+
+            //println!("Trying to move items {} and {}", item_1, item_2);
+
+            // Try moving both items up or down
+            if let Some(next) = current.try_move_up(item_1, item_2) {
+                let steps = process_dfs_global(&next, path, history, max_depth) + 1;
+                fewest_steps = cmp::min(fewest_steps, steps);
+            }
+
+            // Try moving both items up or down
+            if let Some(next) = current.try_move_down(item_1, item_2) {
+                let steps = process_dfs_global(&next, path, history, max_depth) + 1;
+                fewest_steps = cmp::min(fewest_steps, steps);
+            }
+        }
+    }
+
+    path.pop();
+    fewest_steps
+}
+
 
 // Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
 fn process_dfs(current: &Building, history: &mut Vec<Building>, max_depth: usize) -> usize {
@@ -233,6 +305,8 @@ fn process_id(initial: &Building) -> usize {
         println!("Searching DFS with max depth {}...", i);
         let mut history = Vec::new();
         let steps = process_dfs(initial, &mut history, i);
+        //let mut global_history = HashSet::new();
+        //let steps = process_dfs_global(initial, &mut global_history, i);
         if steps < NO_PATH {
             return steps;
         }
@@ -285,56 +359,109 @@ fn main() {
 
 // -----------------------------------------------------------------------------
 
-#[test]
-fn test_id() {
-    let test_input = "The first floor contains a hydrogen-compatible microchip and a \
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn test_dfs_global() {
+        let test_input = "The first floor contains a hydrogen-compatible microchip and a \
                       lithium-compatible microchip.\nThe second floor contains a hydrogen \
                       generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
                       contains nothing relevant.\n";
 
-    let building = read_input(&test_input);
-    assert!(building.is_safe());
+        let building = read_input(&test_input);
+        assert!(building.is_safe());
 
-    println!("Building:\n{}", &building);
+        //println!("Building:\n{}", &building);
 
-    println!("Searching for solution...");
-    let steps = process_id(&building);
+        println!("Searching for solution...");
+        let mut global_history = HashSet::new();
+        let mut path = Vec::new();
+        let steps = process_dfs_global(&building, &mut path, &mut global_history, 11);
 
-    println!("Example data: steps = {:?}", steps);
-    assert!(steps < NO_PATH);
-    assert!(steps == 11);
-}
+        println!("Example data: steps = {:?}", steps);
+        assert!(steps < NO_PATH);
+        assert!(steps == 11);
+    }
 
-#[test]
-fn test_safe() {
-    let mut building = Building::new();
 
-    building.floors[1].add_gen(Material::Hydrogen);
-    building.floors[1].add_chip(Material::Hydrogen);
-    building.floors[1].add_chip(Material::Lithium);
+    #[test]
+    fn test_id() {
+        let test_input = "The first floor contains a hydrogen-compatible microchip and a \
+                      lithium-compatible microchip.\nThe second floor contains a hydrogen \
+                      generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
+                      contains nothing relevant.\n";
 
-    building.floors[2].add_gen(Material::Lithium);
+        let building = read_input(&test_input);
+        assert!(building.is_safe());
 
-    //println!("Building:\n{}", &building);
+        println!("Building:\n{}", &building);
 
-    assert!(!building.floors[1].is_safe());
+        println!("Searching for solution...");
+        let steps = process_id(&building);
 
-    assert!(!building.is_safe());
-}
+        println!("Example data: steps = {:?}", steps);
+        assert!(steps < NO_PATH);
+        assert!(steps == 11);
+    }
 
-#[test]
-fn test_not_safe() {
-    let mut building = Building::new();
+    #[test]
+    fn test_safe() {
+        let mut building = Building::new();
 
-    building.floors[1].add_gen(Material::Hydrogen);
-    building.floors[1].add_chip(Material::Hydrogen);
-    building.floors[0].add_chip(Material::Lithium);
+        building.floors[1].add_gen(Material::Hydrogen);
+        building.floors[1].add_chip(Material::Hydrogen);
+        building.floors[1].add_chip(Material::Lithium);
 
-    building.floors[2].add_gen(Material::Lithium);
+        building.floors[2].add_gen(Material::Lithium);
 
-    //println!("Building:\n{}", &building);
+        //println!("Building:\n{}", &building);
 
-    assert!(building.floors[1].is_safe());
+        assert!(!building.floors[1].is_safe());
 
-    assert!(building.is_safe());
+        assert!(!building.is_safe());
+    }
+
+    #[test]
+    fn test_not_safe() {
+        let mut building = Building::new();
+
+        building.floors[1].add_gen(Material::Hydrogen);
+        building.floors[1].add_chip(Material::Hydrogen);
+        building.floors[0].add_chip(Material::Lithium);
+
+        building.floors[2].add_gen(Material::Lithium);
+
+        //println!("Building:\n{}", &building);
+
+        assert!(building.floors[1].is_safe());
+
+        assert!(building.is_safe());
+    }
+
+    #[test]
+    fn test_hash() {
+        let mut b1 = Building::new();
+        b1.floors[1].add_gen(Material::Hydrogen);
+        b1.floors[1].add_chip(Material::Hydrogen);
+
+        let mut b2 = Building::new();
+        b2.floors[1].add_gen(Material::Lithium);
+        b2.floors[1].add_chip(Material::Lithium);
+        //println!("Building:\n{}", &building);
+
+        println!("b1 hash: {:?}", hasher(&b1));
+        println!("b2 hash: {:?}", hasher(&b2));
+        assert!(hasher(&b1) == hasher(&b2));
+
+        b2.floors[0].add_chip(Material::Cobalt);
+        assert!(hasher(&b1) != hasher(&b2));
+    }
+
+    fn hasher<T: Hash>(t: &T) -> u64 {
+        let mut s = DefaultHasher::new();
+        t.hash(&mut s);
+        s.finish()
+    }
 }
