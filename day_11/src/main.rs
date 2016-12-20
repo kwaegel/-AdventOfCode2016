@@ -227,6 +227,17 @@ fn process_dfs_global(current: &Building,
 
     let mut candidates = BinaryHeap::with_capacity(10);
 
+    let mut can_move_single_down = false;
+    for item_1 in 0..FLOOR_SIZE {
+        if current.item_exists(item_1) {
+            // Only try moving one item down
+            if let Some(next) = current.try_move_down(item_1, item_1) {
+                candidates.push(next);
+                can_move_single_down = true;
+            }
+        }
+    }
+
     // Generate future states by moving one or two items
     // When item_2 == item_1, we only move one item.
     let mut first_pair_idx = None;
@@ -244,6 +255,12 @@ fn process_dfs_global(current: &Building,
             }
         }
 
+        // Only try moving one item down
+        if let Some(next) = current.try_move_down(item_1, item_1) {
+            candidates.push(next);
+        }
+
+
         for item_2 in item_1..FLOOR_SIZE {
             if !current.item_exists(item_2) { continue; }
 
@@ -258,8 +275,12 @@ fn process_dfs_global(current: &Building,
             if let Some(next) = current.try_move_up(item_1, item_2) {
                 candidates.push(next);
             }
-            if let Some(next) = current.try_move_down(item_1, item_2) {
-                candidates.push(next);
+
+            // Only try moving two items down if we couldn't move a single one.
+            if !can_move_single_down && item_1 != item_2 {
+                if let Some(next) = current.try_move_down(item_1, item_2) {
+                    candidates.push(next);
+                }
             }
         }
     }
@@ -331,6 +352,7 @@ fn main() {
     if steps < NO_PATH {
         println!("Part 1: steps = {:?}", steps);
         //assert!(steps == 11);
+        assert!(steps < 51);
     } else {
         println!("No path found within {} steps", MAX_DEPTH);
     }
