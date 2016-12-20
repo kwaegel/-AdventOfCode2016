@@ -5,8 +5,8 @@ use std::str::FromStr;
 use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::collections::binary_heap::BinaryHeap;
 
 #[macro_use]
 extern crate lazy_static;
@@ -49,7 +49,8 @@ impl FromStr for Material {
 // Materials stored as a bool array, in [generator, chip] pairs.
 // Gen  location = material_id*2
 // Chip location = material_id*2 + 1,
-const FLOOR_SIZE: usize = 11;
+const MATERIAL_TYPES: usize = 7;
+const FLOOR_SIZE: usize = MATERIAL_TYPES*2;
 
 // -----------------------------------------------------------------------------
 
@@ -79,9 +80,12 @@ impl Building {
 
     // Number of items-steps to reach the top floor.
     fn distance(&self) -> u32 {
-        self.floors[2].num_items() * 1 +
-        self.floors[1].num_items() * 2 +
-        self.floors[0].num_items() * 3
+//        self.floors[2].num_items() * 1 +
+//        self.floors[1].num_items() * 2 +
+//        self.floors[0].num_items() * 3
+        (self.floors[2].num_pairs() + self.floors[2].num_singles()) * 1 +
+        (self.floors[1].num_pairs() + self.floors[1].num_singles()) * 2 +
+        (self.floors[0].num_pairs() + self.floors[0].num_singles()) * 3
     }
 
     // Check if everything is on the fourth floor (floors 0-2 are empty)
@@ -139,6 +143,7 @@ impl Building {
         }
     }
 }
+
 impl fmt::Display for Building {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for i in 0..4 {
@@ -162,6 +167,7 @@ impl PartialEq for Building {
         self.floors[3] == other.floors[3]
     }
 }
+
 impl Eq for Building {}
 
 impl Hash for Building {
@@ -173,22 +179,33 @@ impl Hash for Building {
     }
 }
 
+// For sorting in a priority queue.
+impl Ord for Building {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Normally "(self.distance()).cmp(&other.distance())", but inverted for a min-heap.
+        (other.distance()).cmp(&self.distance())
+    }
+}
+
+impl PartialOrd for Building {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 // -----------------------------------------------------------------------------
 
 const NO_PATH: usize = std::usize::MAX - 1;
-const MAX_DEPTH: usize = 12;
+const MAX_DEPTH: usize = 200;
 
 // Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
 fn process_dfs_global(current: &Building,
-                      path: &mut Vec<Building>,
                       history: &mut HashSet<Building>,
                       max_depth: usize) -> usize {
 
     if current.depth > max_depth {
         return NO_PATH;
     }
-
-    println!("Visiting state at depth {}:\n{}", path.len()+1, current);
 
     // Skip already visited states.
     // "If the set did not have this value present, true is returned."
@@ -201,14 +218,14 @@ fn process_dfs_global(current: &Building,
         }
     }
 
-    path.push(*current);
-
     if current.is_final() {
         println!("Found target at depth {}", current.depth);
         return 0;
     }
 
     let mut fewest_steps = NO_PATH;
+
+    let mut canidates = BinaryHeap::with_capacity(10);
 
     // Generate future states by moving one or two items
     // When item_2 == item_1, we only move one item.
@@ -221,77 +238,23 @@ fn process_dfs_global(current: &Building,
 
             // Try moving both items up or down
             if let Some(next) = current.try_move_up(item_1, item_2) {
-                let steps = process_dfs_global(&next, path, history, max_depth) + 1;
-                fewest_steps = cmp::min(fewest_steps, steps);
+                canidates.push(next);
+                //let steps = process_dfs_global(&next, history, max_depth) + 1;
+                //fewest_steps = cmp::min(fewest_steps, steps);
             }
 
             // Try moving both items up or down
             if let Some(next) = current.try_move_down(item_1, item_2) {
-                let steps = process_dfs_global(&next, path, history, max_depth) + 1;
-                fewest_steps = cmp::min(fewest_steps, steps);
+                canidates.push(next);
+                //let steps = process_dfs_global(&next, history, max_depth) + 1;
+                //fewest_steps = cmp::min(fewest_steps, steps);
             }
         }
     }
 
-    path.pop();
-    fewest_steps
-}
-
-
-// Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
-fn process_dfs(current: &Building, history: &mut Vec<Building>, max_depth: usize) -> usize {
-
-    if current.depth > max_depth {
-        return NO_PATH;
-    }
-
-    if current.is_final() {
-        println!("Found target at depth {}", current.depth);
-        return 0;
-    }
-
-    let mut fewest_steps = NO_PATH;
-
-    // Optimization: only try to move the first set of paired items, since they are
-    // logically equivalent.
-    // Then move all the unpaired items.
-//    let mut first_paired_indices = current.floors[current.elevator_idx].first_paired_indices();
-//    let mut indices = current.floors[current.elevator_idx].unpaired_indices();
-//    indices.append(&mut first_paired_indices);
-
-
-    // Generate future states by moving one or two items
-    // When item_2 == item_1, we only move one item.
-    for item_1 in 0..FLOOR_SIZE {
-        if !current.item_exists(item_1) { continue; }
-        for item_2 in item_1..FLOOR_SIZE {
-            if !current.item_exists(item_2) { continue; }
-//    for item_1_idx in 0..indices.len() {
-//        let item_1 = indices[item_1_idx];
-//        for item_2_idx in item_1_idx..indices.len() {
-//            let item_2 = indices[item_2_idx];
-
-
-            // Try moving both items up or down
-            if let Some(next) = current.try_move_up(item_1, item_2) {
-                if !history.contains(&next) {
-                    history.push(next);
-                    let steps = process_dfs(&next, history, max_depth) + 1;
-                    fewest_steps = cmp::min(fewest_steps, steps);
-                    history.pop();
-                }
-            }
-
-            // Try moving both items up or down
-            if let Some(next) = current.try_move_down(item_1, item_2) {
-                if !history.contains(&next) {
-                    history.push(next);
-                    let steps = process_dfs(&next, history, max_depth) + 1;
-                    fewest_steps = cmp::min(fewest_steps, steps);
-                    history.pop();
-                }
-            }
-        }
+    for next in canidates {
+        let steps = process_dfs_global(&next, history, max_depth) + 1;
+        fewest_steps = cmp::min(fewest_steps, steps);
     }
 
     fewest_steps
@@ -301,12 +264,12 @@ fn process_dfs(current: &Building, history: &mut Vec<Building>, max_depth: usize
 
 // Iterative deepening
 fn process_id(initial: &Building) -> usize {
-    for i in 1..MAX_DEPTH {
+    for i in 0..MAX_DEPTH {
         println!("Searching DFS with max depth {}...", i);
-        let mut history = Vec::new();
-        let steps = process_dfs(initial, &mut history, i);
-        //let mut global_history = HashSet::new();
-        //let steps = process_dfs_global(initial, &mut global_history, i);
+        //let mut history = Vec::new();
+        //let steps = process_dfs(initial, &mut history, i);
+        let mut global_history = HashSet::new();
+        let steps = process_dfs_global(initial, &mut global_history, i);
         if steps < NO_PATH {
             return steps;
         }
@@ -348,20 +311,27 @@ fn main() {
 
     let building = read_input(&input_string);
 
+    println!("Input building:\n{}", &building);
+
     println!("Searching for solution...");
     let steps = process_id(&building);
-    //let mut history = Vec::new();
-    //let steps = process_dfs(&building, &mut history, 10000);
 
-    println!("Part 1: steps = {:?}", steps);
-    //assert!(steps == 11);
+    if steps < NO_PATH {
+        println!("Part 1: steps = {:?}", steps);
+        //assert!(steps == 11);
+    } else {
+        println!("No path found within {} steps", MAX_DEPTH);
+    }
+
 }
 
 // -----------------------------------------------------------------------------
 
+#[cfg(test)]
 mod test {
 
     use super::*;
+    use std::collections::hash_map::DefaultHasher;
 
     #[test]
     fn test_dfs_global() {
@@ -377,8 +347,7 @@ mod test {
 
         println!("Searching for solution...");
         let mut global_history = HashSet::new();
-        let mut path = Vec::new();
-        let steps = process_dfs_global(&building, &mut path, &mut global_history, 11);
+        let steps = process_dfs_global(&building, &mut global_history, 11);
 
         println!("Example data: steps = {:?}", steps);
         assert!(steps < NO_PATH);

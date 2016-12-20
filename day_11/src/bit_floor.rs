@@ -2,7 +2,6 @@
 pub use ::Material;
 
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 // Materials stored as a bit sequence, in [generator, chip] pairs, with low-bit = generator;
 // 0xA = 1010
@@ -73,6 +72,10 @@ impl BitFloor {
         ((chip_bits >> 1) & gen_bits).count_ones()
     }
 
+    pub fn num_singles(&self) -> u32 {
+        self.unpaired_bits().count_ones()
+    }
+
     // All bits that are part of a [chip,gen] pair.
     pub fn paired_bits(&self) -> u32 {
         let gen_bits = self.bits & GEN_MASK;
@@ -121,9 +124,10 @@ impl Hash for BitFloor {
 
 // -----------------------------------------------------------------------------
 
-//#[cfg(test)]
+#[cfg(test)]
 mod test {
     use super::*;
+    use std::collections::hash_map::DefaultHasher;
 
     #[test]
     fn floor_test_paired() {
