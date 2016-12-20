@@ -71,7 +71,10 @@ impl Building {
 
     fn item_exists(&self, item: usize) -> bool {
         self.floors[self.elevator_idx].is_set(item)
+    }
 
+    fn item_paired(&self, item: usize) -> bool {
+        self.floors[self.elevator_idx].is_paired(item)
     }
 
     fn is_safe(&self) -> bool {
@@ -80,12 +83,9 @@ impl Building {
 
     // Number of items-steps to reach the top floor.
     fn distance(&self) -> u32 {
-//        self.floors[2].num_items() * 1 +
-//        self.floors[1].num_items() * 2 +
-//        self.floors[0].num_items() * 3
-        (self.floors[2].num_pairs() + self.floors[2].num_singles()) * 1 +
-        (self.floors[1].num_pairs() + self.floors[1].num_singles()) * 2 +
-        (self.floors[0].num_pairs() + self.floors[0].num_singles()) * 3
+        self.floors[2].num_items() * 1 +
+        self.floors[1].num_items() * 2 +
+        self.floors[0].num_items() * 3
     }
 
     // Check if everything is on the fourth floor (floors 0-2 are empty)
@@ -225,34 +225,52 @@ fn process_dfs_global(current: &Building,
 
     let mut fewest_steps = NO_PATH;
 
-    let mut canidates = BinaryHeap::with_capacity(10);
+    let mut candidates = BinaryHeap::with_capacity(10);
 
     // Generate future states by moving one or two items
     // When item_2 == item_1, we only move one item.
+//    for item_1 in 0..FLOOR_SIZE {
+//        if !current.item_exists(item_1) { continue; }
+//        for item_2 in item_1..FLOOR_SIZE {
+//            if !current.item_exists(item_2) { continue; }
+
+
+    let mut first_pair_idx = None;
     for item_1 in 0..FLOOR_SIZE {
         if !current.item_exists(item_1) { continue; }
+
+        if first_pair_idx.is_none() && current.item_paired(item_1) {
+            first_pair_idx = Some(item_1);
+        }
+
+        // Skip moving paired items beyond the first pair.
+        if let Some(idx)= first_pair_idx {
+            if current.item_paired(item_1) && item_1 > idx+1 {
+                continue;
+            }
+        }
+
         for item_2 in item_1..FLOOR_SIZE {
             if !current.item_exists(item_2) { continue; }
 
-            //println!("Trying to move items {} and {}", item_1, item_2);
-
-            // Try moving both items up or down
-            if let Some(next) = current.try_move_up(item_1, item_2) {
-                canidates.push(next);
-                //let steps = process_dfs_global(&next, history, max_depth) + 1;
-                //fewest_steps = cmp::min(fewest_steps, steps);
+            // Skip moving paired items beyond the first pair.
+            if let Some(idx)= first_pair_idx {
+                if current.item_paired(item_2) && item_2 > idx+1 {
+                    continue;
+                }
             }
 
             // Try moving both items up or down
+            if let Some(next) = current.try_move_up(item_1, item_2) {
+                candidates.push(next);
+            }
             if let Some(next) = current.try_move_down(item_1, item_2) {
-                canidates.push(next);
-                //let steps = process_dfs_global(&next, history, max_depth) + 1;
-                //fewest_steps = cmp::min(fewest_steps, steps);
+                candidates.push(next);
             }
         }
     }
 
-    for next in canidates {
+    for next in candidates {
         let steps = process_dfs_global(&next, history, max_depth) + 1;
         fewest_steps = cmp::min(fewest_steps, steps);
     }

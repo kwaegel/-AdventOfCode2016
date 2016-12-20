@@ -9,7 +9,6 @@ use std::hash::{Hash, Hasher};
 const CHIP_MASK: u32 = 0x_AA_AA_AA_AA_u32; // alternating, with low bit = false.
 const GEN_MASK: u32 = 0x_55_55_55_55_u32; // alternating, with low bit = true.
 
-
 #[derive(Debug,Clone,Copy)]
 pub struct BitFloor {
     bits: u32
@@ -65,6 +64,13 @@ impl BitFloor {
         self.bits.count_ones()
     }
 
+    // True if a chip or generator is part of a matching pair.
+    pub fn is_paired(&self, index: usize) -> bool {
+        let is_even = |x: usize| x & 1 == 0;
+        (is_even(index) && self.is_set(index) && self.is_set(index+1)) ||
+        (self.is_set(index) && self.is_set(index-1))
+    }
+
     pub fn num_pairs(&self) -> u32 {
         // Shifting the chip bits down by one lets us check the corresponding gens.
         let gen_bits = self.bits & GEN_MASK;
@@ -72,9 +78,9 @@ impl BitFloor {
         ((chip_bits >> 1) & gen_bits).count_ones()
     }
 
-    pub fn num_singles(&self) -> u32 {
-        self.unpaired_bits().count_ones()
-    }
+//    pub fn num_singles(&self) -> u32 {
+//        self.unpaired_bits().count_ones()
+//    }
 
     // All bits that are part of a [chip,gen] pair.
     pub fn paired_bits(&self) -> u32 {
