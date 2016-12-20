@@ -229,12 +229,6 @@ fn process_dfs_global(current: &Building,
 
     // Generate future states by moving one or two items
     // When item_2 == item_1, we only move one item.
-//    for item_1 in 0..FLOOR_SIZE {
-//        if !current.item_exists(item_1) { continue; }
-//        for item_2 in item_1..FLOOR_SIZE {
-//            if !current.item_exists(item_2) { continue; }
-
-
     let mut first_pair_idx = None;
     for item_1 in 0..FLOOR_SIZE {
         if !current.item_exists(item_1) { continue; }
@@ -350,6 +344,30 @@ mod test {
 
     use super::*;
     use std::collections::hash_map::DefaultHasher;
+
+    // Test a simplified version of the problem with only 8 items instead of 10.
+    #[test]
+    #[ignore] // Rather slow.
+    fn test_simple() {
+        let mut input_string = String::new();
+        let mut file = File::open("simple_input.txt").unwrap();
+        let _ = file.read_to_string(&mut input_string);
+
+        let building = read_input(&input_string);
+
+        println!("Input building:\n{}", &building);
+
+        println!("Searching for solution...");
+        let steps = process_id(&building);
+
+        if steps < NO_PATH {
+            println!("Part 1: steps = {:?}", steps);
+            assert!(steps == 37);
+        } else {
+            println!("No path found within {} steps", MAX_DEPTH);
+        }
+
+    }
 
     #[test]
     fn test_dfs_global() {
