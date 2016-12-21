@@ -6,7 +6,7 @@ use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
-use std::collections::binary_heap::BinaryHeap;
+use std::collections::VecDeque;
 
 #[macro_use]
 extern crate lazy_static;
@@ -26,11 +26,13 @@ pub enum Material {
     Promethium = 4,
     Ruthenium = 5,
     Cobalt = 6,
+    Elerium = 7,
+    Dilithium = 8,
 }
 impl FromStr for Material {
-    type Err = ();
+    type Err = &'static str;
 
-    fn from_str(s: &str) -> Result<Material, ()> {
+    fn from_str(s: &str) -> Result<Material, &'static str> {
         match s {
             "hydrogen" => Ok(Material::Hydrogen),
             "lithium" => Ok(Material::Lithium),
@@ -39,7 +41,9 @@ impl FromStr for Material {
             "promethium" => Ok(Material::Promethium),
             "ruthenium" => Ok(Material::Ruthenium),
             "cobalt" => Ok(Material::Cobalt),
-            _ => Err(()),
+            "elerium" => Ok(Material::Elerium),
+            "dilithium" => Ok(Material::Dilithium),
+            _ => Err("Unknown material string"),
         }
     }
 }
@@ -49,7 +53,7 @@ impl FromStr for Material {
 // Materials stored as a bool array, in [generator, chip] pairs.
 // Gen  location = material_id*2
 // Chip location = material_id*2 + 1,
-const MATERIAL_TYPES: usize = 7;
+const MATERIAL_TYPES: usize = 9;
 const FLOOR_SIZE: usize = MATERIAL_TYPES*2;
 
 // -----------------------------------------------------------------------------
@@ -161,6 +165,7 @@ impl fmt::Display for Building {
 
 impl PartialEq for Building {
     fn eq(&self, other: &Building) -> bool {
+        self.elevator_idx == other.elevator_idx &&
         self.floors[0] == other.floors[0] &&
         self.floors[1] == other.floors[1] &&
         self.floors[2] == other.floors[2] &&
@@ -172,6 +177,7 @@ impl Eq for Building {}
 
 impl Hash for Building {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.elevator_idx.hash(state);
         self.floors[0].hash(state);
         self.floors[1].hash(state);
         self.floors[2].hash(state);
@@ -199,118 +205,95 @@ const NO_PATH: usize = std::usize::MAX - 1;
 const MAX_DEPTH: usize = 200;
 
 // Returns the number of steps for everything to reach floor 4 (NO_PATH on failure)
-fn process_dfs_global(current: &Building,
-                      history: &mut HashSet<Building>,
-                      max_depth: usize) -> usize {
+fn process_bfs(initial: &Building, max_depth: usize) -> usize {
 
-    if current.depth > max_depth {
-        return NO_PATH;
-    }
+    let mut best_path = NO_PATH;
+    let mut history: HashSet<Building> = HashSet::new();
 
-    // Skip already visited states.
-    // "If the set did not have this value present, true is returned."
-    //
-    // NOTE: if the current state has a shorter path then the previous
-    // one we need to process it to ensure finding a shortest path.
-    if let Some(previous_state) = history.replace(*current) {
-        if previous_state.depth <= current.depth {
-            return NO_PATH;
-        }
-    }
+    let mut queue = VecDeque::new();
+    queue.push_back(*initial);
 
-    if current.is_final() {
-        println!("Found target at depth {}", current.depth);
-        return 0;
-    }
-
-    let mut fewest_steps = NO_PATH;
-
-    let mut candidates = BinaryHeap::with_capacity(10);
-
-    let mut can_move_single_down = false;
-    for item_1 in 0..FLOOR_SIZE {
-        if current.item_exists(item_1) {
-            // Only try moving one item down
-            if let Some(next) = current.try_move_down(item_1, item_1) {
-                candidates.push(next);
-                can_move_single_down = true;
-            }
-        }
-    }
-
-    // Generate future states by moving one or two items
-    // When item_2 == item_1, we only move one item.
-    let mut first_pair_idx = None;
-    for item_1 in 0..FLOOR_SIZE {
-        if !current.item_exists(item_1) { continue; }
-
-        if first_pair_idx.is_none() && current.item_paired(item_1) {
-            first_pair_idx = Some(item_1);
+    while let Some(current) = queue.pop_front() {
+        if current.depth > max_depth || current.depth > best_path {
+            continue;
         }
 
-        // Skip moving paired items beyond the first pair.
-        if let Some(idx)= first_pair_idx {
-            if current.item_paired(item_1) && item_1 > idx+1 {
+        // Skip already visited states.
+        // NOTE: if the current state has a shorter path then the previous
+        // one we need to process it to ensure finding a shortest path.
+        if let Some(previous_state) = history.replace(current) {
+            if previous_state.depth <= current.depth {
                 continue;
             }
         }
 
-        // Only try moving one item down
-        if let Some(next) = current.try_move_down(item_1, item_1) {
-            candidates.push(next);
+        // Check for goal state
+        if current.is_final() {
+            best_path = cmp::min(best_path, current.depth);
         }
 
+        let mut can_move_single_down = false;
+        for item_1 in 0..FLOOR_SIZE {
+            if current.item_exists(item_1) {
+                // Only try moving one item down
+                if let Some(next) = current.try_move_down(item_1, item_1) {
+                    queue.push_back(next);
+                    can_move_single_down = true;
+                }
+            }
+        }
 
-        for item_2 in item_1..FLOOR_SIZE {
-            if !current.item_exists(item_2) { continue; }
+        let mut first_pair_idx = None;
+        for item_1 in 0..FLOOR_SIZE {
+            if !current.item_exists(item_1) { continue; }
+
+            // Only try moving one item down
+            if let Some(next) = current.try_move_down(item_1, item_1) {
+                queue.push_back(next);
+                can_move_single_down = true;
+            }
+
+            if first_pair_idx.is_none() && current.item_paired(item_1) {
+                first_pair_idx = Some(item_1);
+            }
 
             // Skip moving paired items beyond the first pair.
             if let Some(idx)= first_pair_idx {
-                if current.item_paired(item_2) && item_2 > idx+1 {
+                if current.item_paired(item_1) && item_1 > idx+1 {
                     continue;
                 }
             }
 
-            // Try moving both items up or down
-            if let Some(next) = current.try_move_up(item_1, item_2) {
-                candidates.push(next);
-            }
+            for item_2 in item_1..FLOOR_SIZE {
+                if !current.item_exists(item_2) { continue; }
 
-            // Only try moving two items down if we couldn't move a single one.
-            if !can_move_single_down && item_1 != item_2 {
-                if let Some(next) = current.try_move_down(item_1, item_2) {
-                    candidates.push(next);
+                // Skip moving paired items beyond the first pair.
+                if let Some(idx)= first_pair_idx {
+                    if current.item_paired(item_2) && item_2 > idx+1 {
+                        continue;
+                    }
+                }
+
+                // Try moving both items up or down
+                if let Some(next) = current.try_move_up(item_1, item_2) {
+                    queue.push_back(next);
+                }
+
+                // Try moving two items down if it wasn't safe to move a single one.
+                if !can_move_single_down && item_1 != item_2 {
+                    if let Some(next) = current.try_move_down(item_1, item_2) {
+                        queue.push_back(next);
+                    }
                 }
             }
         }
     }
 
-    for next in candidates {
-        let steps = process_dfs_global(&next, history, max_depth) + 1;
-        fewest_steps = cmp::min(fewest_steps, steps);
-    }
+    println!("BFS terminated after searching {} unique nodes", history.len());
 
-    fewest_steps
+    best_path
 }
 
-// -----------------------------------------------------------------------------
-
-// Iterative deepening
-fn process_id(initial: &Building) -> usize {
-    for i in 0..MAX_DEPTH {
-        println!("Searching DFS with max depth {}...", i);
-        //let mut history = Vec::new();
-        //let steps = process_dfs(initial, &mut history, i);
-        let mut global_history = HashSet::new();
-        let steps = process_dfs_global(initial, &mut global_history, i);
-        if steps < NO_PATH {
-            return steps;
-        }
-    }
-    NO_PATH
-}
-
-// -----------------------------------------------------------------------------
 
 fn read_input(input: &str) -> Building {
     let regex_chip = Regex::new("([:alpha:]+)-compatible").unwrap();
@@ -320,13 +303,13 @@ fn read_input(input: &str) -> Building {
     for (floor_idx, line) in input.lines().enumerate() {
 
         for cap in regex_chip.captures_iter(line) {
-            let chip_type = cap.at(1).unwrap().parse::<Material>().unwrap();
+            let chip_type = cap.at(1).unwrap().parse::<Material>().expect("Unknown chip material");
             //println!("Floor {}: {:?} type microchip", floor_idx, chip_type);
             building.floors[floor_idx].add_chip(chip_type);
         }
 
         for cap in regex_gen.captures_iter(line) {
-            let gen_type = cap.at(1).unwrap().parse::<Material>().unwrap();
+            let gen_type = cap.at(1).unwrap().parse::<Material>().expect("Unknown gen material");
             //println!("Floor {}: {:?} type generator", floor_idx, gen_type);
             building.floors[floor_idx].add_gen(gen_type);
         }
@@ -338,6 +321,7 @@ fn read_input(input: &str) -> Building {
 // -----------------------------------------------------------------------------
 
 fn main() {
+    // Part 1
     let mut input_string = String::new();
     let mut file = File::open("input.txt").unwrap();
     let _ = file.read_to_string(&mut input_string);
@@ -347,14 +331,31 @@ fn main() {
     println!("Input building:\n{}", &building);
 
     println!("Searching for solution...");
-    let steps = process_id(&building);
+    let steps = process_bfs(&building, MAX_DEPTH);
 
     if steps < NO_PATH {
         println!("Part 1: steps = {:?}", steps);
-        //assert!(steps == 11);
-        assert!(steps < 51);
+        assert!(steps == 47);
     } else {
-        println!("No path found within {} steps", MAX_DEPTH);
+        println!("Part 1: no path found within {} steps", MAX_DEPTH);
+    }
+
+
+    // ----------------------------------------------
+    // Part 2
+    let mut building2 = building;
+    building2.floors[0].add_chip(Material::Elerium);
+    building2.floors[0].add_gen(Material::Elerium);
+    building2.floors[0].add_chip(Material::Dilithium);
+    building2.floors[0].add_gen(Material::Dilithium);
+
+    let steps2 = process_bfs(&building2, MAX_DEPTH);
+
+    if steps2 < NO_PATH {
+        println!("Part 2: steps = {:?}", steps2);
+        assert!(steps2 > 47);
+    } else {
+        println!("Part 2: no path found within {} steps", MAX_DEPTH);
     }
 
 }
@@ -367,32 +368,8 @@ mod test {
     use super::*;
     use std::collections::hash_map::DefaultHasher;
 
-    // Test a simplified version of the problem with only 8 items instead of 10.
     #[test]
-    #[ignore] // Rather slow.
-    fn test_simple() {
-        let mut input_string = String::new();
-        let mut file = File::open("simple_input.txt").unwrap();
-        let _ = file.read_to_string(&mut input_string);
-
-        let building = read_input(&input_string);
-
-        println!("Input building:\n{}", &building);
-
-        println!("Searching for solution...");
-        let steps = process_id(&building);
-
-        if steps < NO_PATH {
-            println!("Part 1: steps = {:?}", steps);
-            assert!(steps == 37);
-        } else {
-            println!("No path found within {} steps", MAX_DEPTH);
-        }
-
-    }
-
-    #[test]
-    fn test_dfs_global() {
+    fn test_bfs() {
         let test_input = "The first floor contains a hydrogen-compatible microchip and a \
                       lithium-compatible microchip.\nThe second floor contains a hydrogen \
                       generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
@@ -404,29 +381,7 @@ mod test {
         //println!("Building:\n{}", &building);
 
         println!("Searching for solution...");
-        let mut global_history = HashSet::new();
-        let steps = process_dfs_global(&building, &mut global_history, 11);
-
-        println!("Example data: steps = {:?}", steps);
-        assert!(steps < NO_PATH);
-        assert!(steps == 11);
-    }
-
-
-    #[test]
-    fn test_id() {
-        let test_input = "The first floor contains a hydrogen-compatible microchip and a \
-                      lithium-compatible microchip.\nThe second floor contains a hydrogen \
-                      generator.\nThe third floor contains a lithium generator.\nThe fourth floor \
-                      contains nothing relevant.\n";
-
-        let building = read_input(&test_input);
-        assert!(building.is_safe());
-
-        println!("Building:\n{}", &building);
-
-        println!("Searching for solution...");
-        let steps = process_id(&building);
+        let steps = process_bfs(&building, 11);
 
         println!("Example data: steps = {:?}", steps);
         assert!(steps < NO_PATH);
