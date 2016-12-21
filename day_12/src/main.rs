@@ -82,26 +82,11 @@ impl FromStr for Instruction {
 
 // -----------------------------------------------------------------------------
 
-fn main() {
-    let mut input_string = String::new();
-    let mut file = File::open("input.txt").unwrap();
-    let _ = file.read_to_string(&mut input_string);
-
-    //input_string = "cpy 41 a\ninc a\ninc a\ndec a\njnz a 2\ndec a".to_owned();
-
-
-    let instructions: Vec<_> = input_string
-        .lines()
-        .map(|line| line.parse::<Instruction>().expect("parse failure"))
-        .collect();
-
-
-//    for ins in instructions {
-//        println!("{:?}", ins);
-//    }
+fn run_until_halt(instructions: &Vec<Instruction>, starting_registers: [i32; 4]) -> [i32; 4] {
 
     let mut pc = 0;
-    let mut registers = [0i32; 4];
+    let mut registers = starting_registers;
+
     while pc < instructions.len() {
         //std::thread::sleep_ms(500);
         let ins = instructions[pc];
@@ -124,12 +109,42 @@ fn main() {
                 if src_val != 0 {
                     let new_pc = pc as i32 + offset;
                     pc = new_pc as usize;
-                } else { pc += 1;}
-                //pc += 1;
+                } else {
+                    pc += 1;
+                }
             },
         }
     }
+    registers
+}
 
-    println!("Registers: {:?}", registers);
-    assert!(registers[Register::A as usize] == 318007);
+// -----------------------------------------------------------------------------
+
+fn main() {
+    let mut input_string = String::new();
+    let mut file = File::open("input.txt").unwrap();
+    let _ = file.read_to_string(&mut input_string);
+
+    let instructions: Vec<_> = input_string
+        .lines()
+        .map(|line| line.parse::<Instruction>().expect("parse failure"))
+        .collect();
+
+
+    {
+        let mut registers1 = [0i32; 4];
+        registers1 = run_until_halt(&instructions, registers1);
+
+        println!("Part 1: registers: {:?}", registers1);
+        assert!(registers1[Register::A as usize] == 318007);
+    }
+
+    {
+        // part 2
+        let mut registers2 = [0, 0, 1, 0];
+        registers2 = run_until_halt(&instructions, registers2);
+
+        println!("Part 2: registers: {:?}", registers2);
+        assert!(registers2[Register::A as usize] == 9227661);
+    }
 }
