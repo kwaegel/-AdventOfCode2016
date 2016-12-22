@@ -31,6 +31,7 @@ fn in_bounds((x,y): (i32, i32), size: i32) -> bool {
     x >= 0 && x < size && y >= 0 && y < size
 }
 
+
 fn search(target: (i32,i32), magic_number: i32) -> Option<i32> {
     let start = (1_i32, 1_i32, 0_i32);
     const SIZE: i32 = 100;
@@ -75,6 +76,40 @@ fn search(target: (i32,i32), magic_number: i32) -> Option<i32> {
 }
 
 
+fn max_within_range(max_path: i32,magic_number: i32) -> i32 {
+    let start = (1_i32, 1_i32, 0_i32);
+    const SIZE: i32 = 100;
+    let mut visited = [[false; SIZE as usize]; SIZE as usize]; // Each cell stores [visited] state.
+
+    // Try a simple BFS search
+    let mut visited_states = 0i32;
+    let mut queue = VecDeque::new();
+    queue.push_back(start); // x,y,path
+
+    while let Some(next) = queue.pop_front() {
+        let pos = (next.0, next.1);
+        if in_bounds(pos, SIZE)
+            && is_open(pos, magic_number)
+            && !visited[pos.0 as usize][pos.1 as usize]
+            && next.2 <= max_path {
+
+                visited[pos.0 as usize][pos.1 as usize] = true;
+                visited_states += 1;
+
+                let x = next.0;
+                let y = next.1;
+                let dist = next.2;
+                // Generate next states
+                queue.push_back((x+1, y, dist+1));
+                queue.push_back((x-1, y, dist+1));
+                queue.push_back((x, y+1, dist+1));
+                queue.push_back((x, y-1, dist+1));
+        }
+    } // else skip state
+    visited_states
+}
+
+
 fn main() {
     println!("Hello, world!");
 
@@ -84,6 +119,10 @@ fn main() {
     let path = search(target, puzzle_magic_number);
     println!("Part 1: path distance = {:?}", path);
     assert!(path == Some(82));
+
+    let visited_states = max_within_range(50, puzzle_magic_number);
+    println!("Part 2: possible to visit {} states", visited_states);
+    assert!(visited_states == 138);
 
 //    let example_magic = 10;
 //    for y in 0..7 {
