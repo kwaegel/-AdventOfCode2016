@@ -11,7 +11,7 @@ pub fn to_hex_string(bytes: &[u8; 16]) -> Result<String, std::fmt::Error> {
     Ok(s)
 }
 
-pub fn has_triplet(hash: &str) -> Option<char> {
+pub fn get_first_triplet(hash: &str) -> Option<char> {
     let bytes = hash.as_bytes();
     for i in 1..bytes.len() - 1 {
         if bytes[i - 1] == bytes[i] && bytes[i] == bytes[i + 1] {
@@ -19,32 +19,6 @@ pub fn has_triplet(hash: &str) -> Option<char> {
         }
     }
     None
-}
-
-pub fn has_quintuplet(hash: &str) -> Option<char> {
-    let bytes = hash.as_bytes();
-    for i in 0..bytes.len() - 5 {
-        if bytes[i] == bytes[i + 1] && bytes[i] == bytes[i + 2] && bytes[i] == bytes[i + 3] &&
-            bytes[i] == bytes[i + 4]
-            {
-                return Some(bytes[i] as char);
-            }
-    }
-    None
-}
-
-pub fn get_triplets(hash: &str) -> Vec<char> {
-    let bytes = hash.as_bytes();
-    let mut results = Vec::new();
-    for i in 0..bytes.len()-3 {
-        if bytes[i] == bytes[i+1] && bytes[i] == bytes[i+2] {
-            results.push(bytes[i] as char);
-            return results;
-        }
-    }
-    results.sort();
-    results.dedup();
-    results
 }
 
 pub fn get_quintuplets(hash: &str) -> Vec<char> {
