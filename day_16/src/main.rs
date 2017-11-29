@@ -1,9 +1,9 @@
 
-extern crate num;
-use num::Integer; // for is_even trait
-
 use std::fmt::Write;
 
+fn is_even(val: usize) -> bool {
+    val % 2 == 0
+}
 
 fn generate_dragon(initial: &Vec<u8>, target_size: usize) -> Vec<u8> {
     let mut a = initial.clone();
@@ -35,7 +35,7 @@ fn as_str(input: &[u8]) -> String {
 fn checksum(input: &Vec<u8>) -> String {
     let mut result = input.clone();
     //
-    while result.len().is_even() {
+    while is_even(result.len()) {
         let mut next_result = Vec::new();
 
         // Iterate over pairs
@@ -68,9 +68,20 @@ fn main() {
 
     let part1_input = "01110110101001000";
     let part1_size = 272;
-    let part1_curve = generate_dragon(&as_vec(&part1_input), part1_size);
-    let part1_checksum = checksum(&part1_curve);
-    println!("Part 1 checksum: {}", part1_checksum);
-    assert_eq!(part1_checksum, "11100111011101111");
+    {
+        let part1_curve = generate_dragon(&as_vec(&part1_input), part1_size);
+        let part1_checksum = checksum(&part1_curve);
+        println!("Part 1 checksum: {}", part1_checksum);
+        assert_eq!(part1_checksum, "11100111011101111");
+    }
 
+    // Part 2: larger disk
+    {
+        let part2_input = part1_input;
+        let part2_size = 35651584;
+        let part2_curve = generate_dragon(&as_vec(&part2_input), part2_size);
+        let part2_checksum = checksum(&part2_curve);
+        println!("Part 2 checksum: {}", part2_checksum);
+        assert_eq!(part2_checksum, "10001110010000110");
+    }
 }
