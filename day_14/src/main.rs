@@ -3,105 +3,113 @@ use std::fmt::Write;
 use std::collections::VecDeque;
 
 extern crate crypto;
-use crypto::md5::Md5;
-use crypto::digest::Digest;
 
-fn to_hex_string(bytes: &[u8; 16]) -> Result<String, std::fmt::Error> {
+mod utils;
+use utils::*;
 
-    let mut s = String::new();
-    for &byte in bytes.iter() {
-        write!(&mut s, "{:02x}", byte)?;
-    }
-    Ok(s)
-}
+mod hasher;
+use hasher::Hasher;
 
-fn has_triplet(hash: &str) -> Option<char> {
-    let bytes = hash.as_bytes();
-    for i in 1..bytes.len()-1 {
-        if bytes[i-1] == bytes[i] && bytes[i] == bytes[i+1] {
-            return Some(bytes[i] as char);
-        }
-    }
-    None
-}
+mod db;
+use db::KeyDatabase;
 
-fn has_quintuplet(hash: &str) -> Option<char> {
-    let bytes = hash.as_bytes();
-    for i in 0..bytes.len()-5 {
-        if bytes[i] == bytes[i+1]
-            && bytes[i] == bytes[i+2]
-            && bytes[i] == bytes[i+3]
-            && bytes[i] == bytes[i+4] {
-            return Some(bytes[i] as char);
-        }
-    }
-    None
-}
+fn compute_keys(salt: &str, iters: u32) -> Vec<u32> {
 
-fn main() {
+    let mut keys = Vec::new();
 
-    let salt = "ngcjuoqr";
-    //let salt = "abc";
+    // List of all quintuplets ever found.
+    let mut quintuplet_list = KeyDatabase::new();
 
-    // Bounded queue, storing (id, char) pairs.
-    let mut keys = Vec::with_capacity(64);
-    let mut history: VecDeque<(u32, char)> = VecDeque::with_capacity(5000);
+    // Values will be checked for quintuplets when added, and triplets when removed.
+    let mut processing_queue: VecDeque<(u32, String)> = VecDeque::with_capacity(1002);
 
-    // Static buffer to hold the hash output
-    let mut hasher = Md5::new();
-    let mut hash_output = [0u8; 16];
+    let mut hasher = Hasher::new();
 
-    // Loop through door_id + [0..max] to find hashes that
-    // start with five zeros
+    // Loop through door_id + [0..max] to find hashes that contain quintuplets.
     for i in 0..u32::max_value() {
-        let mut test_value = String::new();
-        let _ = write!(test_value,"{}{}", salt, i);
-        hasher.reset();
-        hasher.input(test_value.as_bytes());
-        hasher.result(&mut hash_output);
+        let mut input_hash = String::new();
+        let _ = write!(input_hash, "{}{}", salt, i);
+        input_hash = hasher.hash(&input_hash, iters);
 
-        // Check hash for character triplets.
-        let hash = to_hex_string(&hash_output).expect("Failed to write hash");
-
-        // Prune the history to only the last 1000 keys.
-        let oldest = i as i32 - 1000_i32 + 1;
-        while let Some(&(idx, _)) = history.front() {
-            if (idx as i32) < oldest {
-                history.pop_front();
-            } else {
-                break;
-            }
+        // Add any entries to the quintuplet list.
+        for chr in get_quintuplets(&input_hash) {
+            //println!("Inserting {} at {}, hash {}", chr, i, input_hash);
+            quintuplet_list.insert(chr, i);
         }
 
-        // if quintuplet, check the last 1000 keys.
-        if let Some(chr) = has_quintuplet(&hash) {
+        // Push this entry on the processing queue.
+        processing_queue.push_back((i, input_hash));
 
-            for &(prev_idx, prev_chr) in history.iter() {
-                if prev_chr == chr {
-                    //println!("Found key {} at {}", prev_idx, i);
-                    keys.push(prev_idx);
+        // If we have at least 1000 elements in the queue, start checking for triples.
+        while processing_queue.len() > 1001 {
+            if let Some((index, hash)) = processing_queue.pop_front() {
+                //println!("Popped [{}] {}", index, hash);
+
+                // For each key K at i, check [i+1, i+1000].
+                // E.g. for i=0, check range [1, 1000]
+                if let Some(chr) = get_first_triplet(&hash) {
+                    if let Some(_) = quintuplet_list.contains_in_range(chr, index + 1, index + 1000) {
+                        keys.push(index);
+                        break; // Don't double add to results.
+                    }
                 }
             }
-
-            history.retain(|&x| x.1 != chr);
-
-            history.push_back((i, chr));
-        }
-        if let Some(chr) = has_triplet(&hash) {
-            history.push_back((i, chr));
         }
 
         if keys.len() >= 64 {
             break;
         }
+
     }
 
-    // Part 1: check the index of the 64-th key
-    keys.sort();
-    keys.dedup();
+    keys
+}
 
-    println!("{} keys: {:?}", keys.len(), keys);
-    println!("Part 1: index of 64-th key: {}", keys[63]);
+
+fn main() {
+
+    // Test data
+    {
+        let keys = compute_keys("abc", 1);
+        //println!("{} keys: {:?}", keys.len(), keys);
+        assert!(keys.len() >= 64);
+        println!("Part 1, example: index of 64-th key: {}", keys[63]);
+        assert_eq!(keys[63], 22728);
+    }
+
+
+    // Part 1
+    {
+        let keys = compute_keys("ngcjuoqr", 1);
+        //println!("{} keys: {:?}", keys.len(), keys);
+        println!("Part 1: index of 64-th key: {}", keys[63]);
+        assert!(keys.len() >= 64);
+        assert_eq!(keys[63], 18626);
+    }
+
+    // Part 2
+    {
+        let keys = compute_keys("ngcjuoqr", 2017);
+        //println!("{} keys: {:?}", keys.len(), &keys);
+        println!("Part 2: index of 64-th key: {}", keys[63]);
+        assert!(keys.len() >= 64);
+        assert_eq!(keys[63], 20092);
+    }
+}
+
+#[test]
+fn part1_example() {
+    let keys = compute_keys("abc", 1);
     assert!(keys.len() >= 64);
-    assert!(keys[63] == 18626);
+    println!("{} keys: {:?}", keys.len(), &keys[0..63]);
+    assert_eq!(keys[0], 39);
+    assert_eq!(keys[63], 22728);
+}
+
+#[test]
+fn part2_example() {
+    let keys = compute_keys("abc", 2017);
+    println!("{} keys: {:?}", keys.len(), &keys[0..63]);
+    assert!(keys.len() >= 64);
+    assert_eq!(keys[63], 22551);
 }
