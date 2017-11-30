@@ -112,6 +112,21 @@ fn find_path(start: State) -> Option<State> {
         .min_by_key(|state| state.state.len())
 }
 
+// Recursively search and find the target position
+fn find_longest_path(start: State) -> Option<State> {
+
+    if start.is_target() {
+        return Some(start);
+    }
+
+    //println!("Find path on {}", start.state);
+    get_open_directions(&start.state)
+        .iter()
+        .filter_map(|dir| start.move_dir(dir))
+        .filter_map(|next| find_longest_path(next))
+        .max_by_key(|state| state.state.len())
+}
+
 fn main() {
     {
         let example_start = State::new("hijkl");
@@ -142,11 +157,47 @@ fn main() {
     }
 
     // Part 1
+    let puzzle_input = "vwbaicqe";
     {
-        let part1_input = "vwbaicqe";
-        let example_start = State::new(part1_input);
+        let example_start = State::new(puzzle_input);
         let min_path = find_path(example_start);
-        println!("Part 1: {:?}", &min_path);
-        assert_eq!(min_path.unwrap().state, "vwbaicqeDRDRULRDRD");
+        if let Some(min_path) = min_path {
+            println!("Part 1: {}", &min_path.state[8..]);
+            assert_eq!(min_path.state, "vwbaicqeDRDRULRDRD");
+        }
+    }
+
+    // Part 2
+
+    {
+        let example_start = State::new("ihgpwlah");
+        let max_path = find_longest_path(example_start);
+        assert!(max_path.is_some());
+        if let Some(max_path) = max_path {
+            let length = max_path.state.len() - puzzle_input.len();
+            //println!("max path length: {}", length);
+            assert_eq!(length, 370);
+        }
+    }
+
+    {
+        let example_start = State::new("ulqzkmiv");
+        let max_path = find_longest_path(example_start);
+        assert!(max_path.is_some());
+        if let Some(max_path) = max_path {
+            let length = max_path.state.len() - puzzle_input.len();
+            //println!("max path length: {}", length);
+            assert_eq!(length, 830);
+        }
+    }
+
+    {
+        let example_start = State::new(puzzle_input);
+        let max_path = find_longest_path(example_start);
+        if let Some(max_path) = max_path {
+            let length = max_path.state.len() - puzzle_input.len();
+            println!("Part 2: max path length: {}", length);
+            assert_eq!(length, 384);
+        }
     }
 }
