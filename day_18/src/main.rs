@@ -12,7 +12,7 @@ fn count_safe(first_row: &str, num_rows: i32) -> usize {
 
     let mut num_safe = row.iter().filter(|&c| c == &'.').count();
 
-    println!("{}", row.iter().cloned().collect::<String>());
+    //println!("{}", row.iter().cloned().collect::<String>());
     for _ in 1..num_rows {
         let mut next_row = Vec::new();
         for idx in 0..row.len() {
@@ -33,7 +33,7 @@ fn count_safe(first_row: &str, num_rows: i32) -> usize {
         }
         row = next_row;
         num_safe += row.iter().filter(|&c| c == &'.').count();
-        println!("{}", row.iter().cloned().collect::<String>());
+        //println!("{}", row.iter().cloned().collect::<String>());
     }
 
     num_safe
@@ -46,7 +46,10 @@ fn main() {
     let safe_count2 = count_safe(".^^.^.^^^^", 10);
     println!("Example 2: {} safe tiles", safe_count2);
 
-    let part1_input = "^.^^^.^..^....^^....^^^^.^^.^...^^.^.^^.^^.^^..^.^...^.^..^.^^.^..^.....^^^.^.^^^..^^...^^^...^...^.";
-    let part1_safe = count_safe(part1_input, 40);
+    let puzzle_input = "^.^^^.^..^....^^....^^^^.^^.^...^^.^.^^.^^.^^..^.^...^.^..^.^^.^..^.....^^^.^.^^^..^^...^^^...^...^.";
+    let part1_safe = count_safe(puzzle_input, 40);
     println!("Part 1: {} safe tiles", part1_safe);
+
+    let part2_safe = count_safe(puzzle_input, 400000);
+    println!("Part 2: {} safe tiles", part2_safe);
 }
