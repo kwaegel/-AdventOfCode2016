@@ -5,6 +5,12 @@ pub static EXAMPLE_INPUT: &'static str =
 0-2
 4-7";
 
+#[allow(dead_code)]
+pub static EXAMPLE_INPUT_2: &'static str =
+"5-8
+1-2
+4-7";
+
 
 #[allow(dead_code)]
 pub static PUZZLE_INPUT: &'static str =
