@@ -3,6 +3,9 @@
 
 use std::num::ParseIntError;
 
+extern crate permutohedron;
+use permutohedron::Heap;
+
 mod input;
 use input::*;
 
@@ -42,7 +45,7 @@ fn rotate_by_index(input: &mut [char], x: char) {
     if index >= 4 {
         amount += 1;
     }
-    println!("rotating by {}", amount);
+    //println!("rotating by {}", amount);
     rotate_right(input, amount);
     //input.rotate(amount);
 }
@@ -76,7 +79,10 @@ fn move_to_pos(input: &mut [char], x: usize, y: usize) {
 // rotate based on position of letter X
 // reverse positions X through Y
 // move position X to position Y
-fn parse_instructions(instructions: &str, mut input: &mut [char]) -> Result<(), ParseIntError> {
+fn parse_instructions(instructions: &str, input_str: &str) -> Result<String, ParseIntError> {
+
+    let mut input: Vec<_> = input_str.chars().collect();
+
     for line in instructions.lines() {
         let splits: Vec<&str> = line.split_whitespace().collect();
 
@@ -117,25 +123,71 @@ fn parse_instructions(instructions: &str, mut input: &mut [char]) -> Result<(), 
             panic!("Unknown instruction!");
         }
 
-        print(&input);
+        //print(&input);
     }
 
-    Ok(())
+    Ok(input.iter().collect::<String>())
 }
 
 
-fn print(input: &[char]) {
-    let s = input.iter().cloned().collect::<String>();
-    println!("{}", s);
+fn bf_crack(instructions: &str, target_hash: &str, source: &str) -> Option<(String, String)> {
+    let mut data: Vec<_> = source.chars().collect();
+    let heap = Heap::new(&mut data);
+    for p in heap {
+        let mut test_input = p.iter().collect::<String>();
+        if let Ok(test_hash) = parse_instructions(instructions, &test_input) {
+            //println!("{} -> {}", test_input, test_hash);
+            if test_hash == target_hash {
+                //println!("#####");
+                return Some((test_input, test_hash));
+            }
+        }
+    }
+
+    None
 }
+
 
 fn main() {
 
-    //let mut example: Vec<_> = "abcde".chars().collect();
-    //parse_instructions(&EXAMPLE_INPUT, &mut example).unwrap();
+//    {
+//        // Example
+//        parse_instructions(&EXAMPLE_INPUT, &"abcde".to_string()).unwrap();
+//
+//        println!("------------------#");
+//        let hashed = "decab".to_string();
+//        let source = "abcde".to_string();
+//        let result = bf_crack(&EXAMPLE_INPUT, &hashed, &source);
+//        if let Some(cracked) = result {
+//            println!("Cracked: {} -> {}", cracked.0, cracked.1);
+//        }
+//    }
 
-    let mut puzle_part_1: Vec<_> = "abcdefgh".chars().collect();
-    parse_instructions(&PUZZLE_INPUT, &mut puzle_part_1).unwrap();
-    print(&puzle_part_1);
-    assert_eq(&part_1, "hcdefbag");
+    {
+        let puzzle_part_1 = "abcdefgh".to_string();
+        let result = parse_instructions(&PUZZLE_INPUT, &puzzle_part_1);
+        assert!(result.is_ok());
+        assert_eq!(result.clone().unwrap(), "hcdefbag");
+        println!("Part 1: {} -> {}", puzzle_part_1, result.unwrap());
+    }
+
+//    // For testing, crack "hcdefbag" from the previous step.
+//    {
+//        let hashed = "hcdefbag".to_string();
+//        let source = "abcdefgh".to_string();
+//        let result = bf_crack(&PUZZLE_INPUT, &hashed, &source);
+//        if let Some(cracked) = result {
+//            println!("Cracked: {} -> {}", cracked.0, cracked.1);
+//        }
+//    }
+
+    // Part 2: unscramble "fbgdceah"
+    {
+        let hashed = "fbgdceah".to_string();
+        let source = "abcdefgh".to_string();
+        let result = bf_crack(&PUZZLE_INPUT, &hashed, &source);
+        if let Some(cracked) = result {
+            println!("Part 2: cracked {} -> {}", cracked.0, cracked.1);
+        }
+    }
 }
